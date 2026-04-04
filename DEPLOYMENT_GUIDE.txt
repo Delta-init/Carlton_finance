@@ -1,0 +1,165 @@
+# Carlton Finance Server — cPanel Deployment Guide
+# Host: carltonedu.com
+
+## STEP 1 — Check Node.js is available in cPanel
+1. Log into cPanel (https://carltonedu.com/cpanel)
+2. Look for "Setup Node.js App" in the Software section
+3. If you don't see it, contact your host and ask them to enable Node.js
+
+---
+
+## STEP 2 — Create the Node.js App in cPanel
+
+1. Click "Setup Node.js App"
+2. Click "CREATE APPLICATION"
+3. Fill in:
+   - Node.js version: 18 or 20 (latest LTS)
+   - Application mode: Production
+   - Application root: carlton-finance    ← folder name on server
+   - Application URL: carlton-finance     ← or leave blank for subdomain
+   - Application startup file: server.js
+4. Click CREATE
+5. cPanel will show you the app path, e.g: /home/yourusername/carlton-finance
+
+---
+
+## STEP 3 — Upload your files via File Manager
+
+Upload these 3 files to /home/yourusername/carlton-finance/
+  - server.js
+  - package.json
+
+(Do NOT upload academy-finance.html to the server — it runs in your browser)
+
+---
+
+## STEP 4 — Install dependencies
+
+In cPanel Node.js App panel:
+1. Find your app in the list
+2. Click the pencil/edit icon
+3. Scroll down and click "Run NPM Install"
+   (this installs express, nodemailer, cors)
+
+OR via SSH if you have it:
+  cd ~/carlton-finance
+  npm install
+
+---
+
+## STEP 5 — Update server.js CORS for your domain
+
+The server needs to allow requests from wherever you open the HTML file.
+In server.js, the CORS line is already set to allow all origins (*) which works fine.
+
+---
+
+## STEP 6 — Start the app
+
+In cPanel Node.js App panel:
+1. Click the START button next to your app
+2. Status should change to "Running"
+
+---
+
+## STEP 7 — Find your server URL
+
+Your server will run at one of these:
+  https://carltonedu.com:3210         ← if port 3210 is open
+  https://carlton-finance.carltonedu.com   ← if set up as subdomain
+
+IMPORTANT: cPanel shared hosting usually BLOCKS custom ports like 3210.
+You need to either:
+  a) Ask your host to open port 3210, OR
+  b) Use a subdomain (easier — see Step 8)
+
+---
+
+## STEP 8 — Set up a subdomain (RECOMMENDED)
+
+1. In cPanel → Subdomains
+2. Create: api.carltonedu.com → Document root: carlton-finance
+3. In cPanel Node.js App → set Application URL to: api.carltonedu.com
+4. Your server is now at: https://api.carltonedu.com
+
+---
+
+## STEP 9 — Update the HTML file
+
+Open academy-finance.html in a text editor.
+Find this line (near the top of the <script> section):
+
+  const EMAIL_SERVER = 'http://localhost:3210';
+
+Change it to your server URL:
+
+  const EMAIL_SERVER = 'https://api.carltonedu.com';
+
+Save the file. That's it.
+
+---
+
+## STEP 10 — Test it
+
+1. Open academy-finance.html in your browser
+2. Click "Forgot password?" on the login screen
+3. Enter a username that has an email registered
+4. Check the inbox — OTP email should arrive within seconds
+
+---
+
+## TROUBLESHOOTING
+
+Problem: "Cannot reach email server"
+→ The Node.js app is not running — go to cPanel and click START
+
+Problem: CORS error in browser console
+→ The server.js already allows all origins (*), so this shouldn't happen
+→ If it does, check the app is running at the exact URL you put in EMAIL_SERVER
+
+Problem: Email not arriving
+→ Check spam folder
+→ Test SMTP credentials using the test script below
+
+Problem: "Application failed to start"
+→ Check the log in cPanel Node.js App → View Log
+→ Usually means npm install didn't run, or server.js has a syntax error
+
+---
+
+## SMTP TEST SCRIPT
+
+Save this as test-email.js and run: node test-email.js
+
+  import nodemailer from 'nodemailer';
+
+  const transporter = nodemailer.createTransport({
+    host: 'mail.carltonedu.com',
+    port: 465,
+    secure: true,
+    auth: {
+      user: 'no-replay@carltonedu.com',
+      pass: '123#CarltonEdu_'
+    }
+  });
+
+  transporter.verify((error, success) => {
+    if (error) {
+      console.log('SMTP ERROR:', error);
+    } else {
+      console.log('SMTP OK — server is ready to send emails');
+    }
+  });
+
+---
+
+## SUMMARY
+
+Local (development):     node server.js  →  http://localhost:3210
+Hosted on cPanel:        https://api.carltonedu.com
+HTML setting to update:  const EMAIL_SERVER = 'https://api.carltonedu.com';
+
+Files on server:
+  ~/carlton-finance/server.js
+  ~/carlton-finance/package.json
+  ~/carlton-finance/node_modules/  (created by npm install)
