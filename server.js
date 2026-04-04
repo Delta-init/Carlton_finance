@@ -11,7 +11,7 @@ import nodemailer from 'nodemailer';
 import crypto from 'crypto';
 
 const app = express();
-const PORT = process.env.PORT || 3210;
+const PORT = 3210;
 
 // ── SMTP ─────────────────────────────────────────────────────
 const transporter = nodemailer.createTransport({
