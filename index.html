@@ -1591,7 +1591,27 @@
         try {
           localStorage.setItem(DB_KEY, JSON.stringify(DB));
         } catch (e) {}
+        // Sync to server (fire-and-forget — localStorage remains the fast cache)
+        fetch(`${EMAIL_SERVER}/db`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(DB)
+        }).catch(() => {});
       }
+      // Load latest DB from server on startup (server wins over stale localStorage)
+      async function initFromServer() {
+        try {
+          const res = await fetch(`${EMAIL_SERVER}/db`);
+          if (res.ok) {
+            const serverDB = await res.json();
+            if (serverDB && serverDB.users && serverDB.users.length > 0) {
+              DB = serverDB;
+              try { localStorage.setItem(DB_KEY, JSON.stringify(DB)); } catch (e) {}
+            }
+          }
+        } catch (e) { /* server unreachable — localStorage fallback stays */ }
+      }
+
       function defaultDB() {
         return {
           settings: {
@@ -5114,7 +5134,9 @@
 
       // ── INIT ─────────────────────────────────────────────────────
       updateFxSidebar();
-      window.addEventListener("load", function () {
+      window.addEventListener("load", async function () {
+        // Pull latest data from server before showing login
+        await initFromServer();
         // Login wiring
         document.getElementById("login-btn").addEventListener("click", doLogin);
         document.getElementById("fp-btn").addEventListener("click", doSendOtp);

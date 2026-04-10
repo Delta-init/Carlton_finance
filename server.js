@@ -9,6 +9,12 @@ import express from 'express';
 import cors from 'cors';
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DB_FILE = path.join(__dirname, 'db.json');
 
 const app = express();
 const PORT = 3210;
@@ -41,7 +47,7 @@ setInterval(() => {
 
 // ── MIDDLEWARE ───────────────────────────────────────────────
 app.use(cors({ origin: '*' }));
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '10mb' }));
 app.set('trust proxy', 1);
 app.use((req, _res, next) => { console.log(`${req.method} ${req.path}`); next(); });
 
@@ -130,6 +136,36 @@ app.post('/send-email', async (req, res) => {
   } catch (err) {
     console.error('Report email error:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── DATABASE (JSON file) ──────────────────────────────────────
+function readDB() {
+  try {
+    if (fs.existsSync(DB_FILE)) return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  } catch (e) { console.error('DB read error:', e.message); }
+  return null;
+}
+
+function writeDB(data) {
+  fs.writeFileSync(DB_FILE, JSON.stringify(data), 'utf8');
+}
+
+app.get('/db', (req, res) => {
+  const data = readDB();
+  if (!data) return res.status(404).json({ error: 'No database found' });
+  res.json(data);
+});
+
+app.put('/db', (req, res) => {
+  const data = req.body;
+  if (!data || typeof data !== 'object') return res.status(400).json({ error: 'Invalid data' });
+  try {
+    writeDB(data);
+    res.json({ success: true });
+  } catch (e) {
+    console.error('DB write error:', e.message);
+    res.status(500).json({ error: e.message });
   }
 });
 
