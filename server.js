@@ -159,7 +159,8 @@ app.get('/db', (req, res) => {
 
 app.put('/db', (req, res) => {
   const data = req.body;
-  if (!data || typeof data !== 'object') return res.status(400).json({ error: 'Invalid data' });
+  if (!data || typeof data !== 'object' || Array.isArray(data) || Object.keys(data).length === 0)
+    return res.status(400).json({ error: 'Invalid data' });
   try {
     writeDB(data);
     res.json({ success: true });
