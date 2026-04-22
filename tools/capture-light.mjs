@@ -1,0 +1,13 @@
+import puppeteer from 'puppeteer';
+const browser = await puppeteer.launch({ headless: 'new' });
+const page = await browser.newPage();
+await page.setViewport({ width: 1440, height: 900 });
+await page.goto('http://localhost:4173/', { waitUntil: 'networkidle0' });
+await page.evaluate(() => { try { localStorage.setItem('theme','light'); } catch(e){} });
+await page.reload({ waitUntil: 'networkidle0' });
+await page.type('input[placeholder="Enter username"]', 'admin');
+await page.type('input[placeholder="Enter password"]', 'admin123');
+await Promise.all([ page.click('button#login-btn, button'), new Promise(r=>setTimeout(r,800)) ]);
+await page.screenshot({ path: 'screenshots/15-light-mode-dashboard.png' });
+await browser.close();
+console.log('done');

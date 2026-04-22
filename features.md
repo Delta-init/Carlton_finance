@@ -139,6 +139,7 @@ Only admin role.
 - Academy name
 - FX rates (USD→AED, USD→INR)
 - Display currency selector
+- Theme toggle (☼ / ☾) in the topbar — persists per-browser in `localStorage["theme"]`. Controlled by `applyTheme()` / `toggleTheme()`; defaults to dark. Only the color custom properties on `:root` change — no layout shift. See `screenshots/15-light-mode-dashboard.png` for the light variant.
 
 ## 15. Reconciliation (manual-only, per-day segregated)
 
