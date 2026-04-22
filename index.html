@@ -4157,10 +4157,14 @@
         toast(id ? "Student updated" : "Student added");
       }
       function modalAddPayment(preStudentId) {
-        const s = preStudentId ? getStudent(preStudentId) : null;
+        // Pick the effective initial student so Program/Amount/Currency
+        // are pre-filled to match whatever the <select> visually shows.
+        const active = DB.students.filter((x) => x.status === "active");
+        const initialId = preStudentId || (active[0] && active[0].id) || (DB.students[0] && DB.students[0].id);
+        const s = initialId ? getStudent(initialId) : null;
         return `<div class="modal-title">Record payment</div>
   <div class="form-row2 form-row2-wrap">
-    <div class="field"><label>Student</label><select id="f-sid" onchange="autoFillFee()">${studentOptions(preStudentId)}</select></div>
+    <div class="field"><label>Student</label><select id="f-sid" onchange="autoFillFee()">${studentOptions(initialId)}</select></div>
     <div class="field"><label>Program</label><input id="f-prog" value="${s ? s.program : ""}" readonly style="background:var(--bg3)"></div>
   </div>
   <div class="form-row2 form-row2-wrap">
