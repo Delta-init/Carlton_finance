@@ -1,8 +1,8 @@
-# Carlton Trading Academy — Finance Manager
+# Delta Academy — Finance Manager
 
 ## 1. Project Summary
 
-A single-tenant internal finance management dashboard for Carlton Trading Academy. It tracks students, programs, fees, treasury accounts (bank/PSP/cash/exchanger), expenses, payroll, inter-account transfers, and FX-converted totals across USD/AED/INR. All operational data lives in the browser's LocalStorage; a small Node.js email-server handles password-reset OTPs and ad-hoc report emails.
+A single-tenant internal finance management dashboard for Delta Academy. It tracks students, programs, fees, treasury accounts (bank/PSP/cash/exchanger), expenses, payroll, inter-account transfers, and FX-converted totals across USD/AED/INR. All operational data lives in the browser's LocalStorage; a small Node.js email-server handles password-reset OTPs and ad-hoc report emails.
 
 ## 2. Architecture at a Glance
 

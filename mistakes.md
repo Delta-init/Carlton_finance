@@ -1,6 +1,6 @@
 # Mistakes, Bugs, and Lessons Learned
 
-A living log of issues discovered while setting up, analyzing, and running Carlton Finance. Each entry: **what**, **where**, **why it matters**, **proposed fix**. Items marked ⏳ are pending approval; ✅ are fixed; 🚫 are known-but-not-fixing.
+A living log of issues discovered while setting up, analyzing, and running Delta Academy Finance. Each entry: **what**, **where**, **why it matters**, **proposed fix**. Items marked ⏳ are pending approval; ✅ are fixed; 🚫 are known-but-not-fixing.
 
 ---
 

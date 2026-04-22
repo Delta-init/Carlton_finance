@@ -1,7 +1,7 @@
 {
-  "name": "carlton-finance-server",
+  "name": "delta-finance-server",
   "version": "1.0.0",
-  "description": "Carlton Trading Academy — Finance Manager email server",
+  "description": "Delta Academy — Finance Manager email server",
   "type": "module",
   "main": "server.js",
   "scripts": {

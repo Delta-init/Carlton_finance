@@ -1,5 +1,5 @@
 /**
- * Carlton Trading Academy — Finance Manager
+ * Delta Academy — Finance Manager
  * Email server — cPanel / Production build
  *
  * HOSTED AT: https://api.carltonedu.com
@@ -52,7 +52,7 @@ app.set('trust proxy', 1);
 app.use((req, _res, next) => { console.log(`${req.method} ${req.path}`); next(); });
 
 // ── HEALTH ───────────────────────────────────────────────────
-app.get('/', (req, res) => res.json({ service: 'Carlton Finance Server', status: 'running', time: new Date().toISOString() }));
+app.get('/', (req, res) => res.json({ service: 'Delta Academy Finance Server', status: 'running', time: new Date().toISOString() }));
 app.get('/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
 // ── SEND OTP ─────────────────────────────────────────────────
@@ -66,15 +66,15 @@ app.post('/send-otp', async (req, res) => {
   const html = `
 <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto">
   <div style="background:#0f0f0f;padding:20px 28px;border-radius:10px 10px 0 0">
-    <span style="font-size:20px;font-weight:700;color:#fff">Carlton<span style="color:#1a9e9e">Edu</span></span>
+    <span style="font-size:20px;font-weight:700;color:#fff"><span style="color:#d42a2a">d</span><span style="color:#7b2cbf">e</span><span style="color:#1e3fcf">l</span><span style="color:#1e7d3b">t</span><span style="color:#f5a623">a</span> <span style="color:#fff;font-size:14px;letter-spacing:2px">ACADEMY</span></span>
     <span style="font-size:11px;color:#888;font-family:monospace;margin-left:8px">Finance Manager</span>
   </div>
   <div style="background:#fff;border:1px solid #eee;padding:28px;border-radius:0 0 10px 10px">
     <h2 style="margin:0 0 12px;color:#111;font-size:18px">Password Reset OTP</h2>
     <p style="color:#666;font-size:14px;margin:0 0 20px">Reset request for user <strong>${username}</strong>.</p>
-    <div style="background:#f8f8f8;border:2px solid #1a9e9e;border-radius:10px;padding:22px;text-align:center;margin:0 0 20px">
+    <div style="background:#f8f8f8;border:2px solid #1e3fcf;border-radius:10px;padding:22px;text-align:center;margin:0 0 20px">
       <div style="font-size:11px;color:#999;letter-spacing:3px;text-transform:uppercase;margin-bottom:8px">One-Time Password</div>
-      <div style="font-size:42px;font-weight:700;letter-spacing:10px;color:#1a9e9e;font-family:monospace">${otp}</div>
+      <div style="font-size:42px;font-weight:700;letter-spacing:10px;color:#1e3fcf;font-family:monospace">${otp}</div>
       <div style="font-size:12px;color:#aaa;margin-top:8px">Expires in 10 minutes</div>
     </div>
     <p style="color:#aaa;font-size:12px;margin:0">If you didn't request this, ignore this email.</p>
@@ -83,9 +83,9 @@ app.post('/send-otp', async (req, res) => {
 
   try {
     await transporter.sendMail({
-      from: '"Carlton Edu" <no-replay@carltonedu.com>',
+      from: '"Delta Academy" <no-replay@carltonedu.com>',
       to: email,
-      subject: `${otp} — Carlton Finance password reset`,
+      subject: `${otp} — Delta Academy Finance password reset`,
       html,
       text: `Your OTP is: ${otp}\nExpires in 10 minutes.`
     });
@@ -120,17 +120,17 @@ app.post('/send-email', async (req, res) => {
   const emailHtml = html || `
 <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
   <div style="background:#0f0f0f;padding:18px 28px;border-radius:10px 10px 0 0">
-    <span style="font-size:18px;font-weight:700;color:#fff">Carlton<span style="color:#1a9e9e">Edu</span></span>
+    <span style="font-size:18px;font-weight:700;color:#fff"><span style="color:#d42a2a">d</span><span style="color:#7b2cbf">e</span><span style="color:#1e3fcf">l</span><span style="color:#1e7d3b">t</span><span style="color:#f5a623">a</span> <span style="color:#fff;font-size:13px;letter-spacing:2px">ACADEMY</span></span>
     <span style="font-size:11px;color:#888;font-family:monospace;margin-left:8px">Daily Finance Report</span>
   </div>
   <div style="background:#fff;border:1px solid #eee;padding:24px 28px;border-radius:0 0 10px 10px">
     <pre style="font-family:monospace;font-size:13px;color:#333;white-space:pre-wrap;line-height:1.7;margin:0">${text||''}</pre>
   </div>
-  <div style="text-align:center;padding:12px;font-size:11px;color:#aaa">Carlton Trading Academy · no-replay@carltonedu.com</div>
+  <div style="text-align:center;padding:12px;font-size:11px;color:#aaa">Delta Academy · no-replay@carltonedu.com</div>
 </div>`;
 
   try {
-    await transporter.sendMail({ from: '"Carlton Edu" <no-replay@carltonedu.com>', to, subject, text: text||'', html: emailHtml });
+    await transporter.sendMail({ from: '"Delta Academy" <no-replay@carltonedu.com>', to, subject, text: text||'', html: emailHtml });
     console.log(`Report sent → ${to}`);
     res.json({ success: true });
   } catch (err) {
@@ -175,7 +175,7 @@ app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 // ── START ─────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n${'━'.repeat(44)}`);
-  console.log(`  Carlton Finance Email Server`);
+  console.log(`  Delta Academy Finance Email Server`);
   console.log(`  Port   : ${PORT}`);
   console.log(`  Local  : http://localhost:${PORT}`);
   console.log(`  Live   : https://api.carltonedu.com`);

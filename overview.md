@@ -1,4 +1,4 @@
-# Carlton Finance Manager — Full Project Overview
+# Delta Academy Finance Manager — Full Project Overview
 
 ## Architecture Summary
 

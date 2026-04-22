@@ -1,4 +1,4 @@
-# Carlton Finance — Feature Catalog
+# Delta Academy Finance — Feature Catalog
 
 Grouped by navigation section. Every feature runs entirely in the browser against `localStorage`, except password-reset OTP and email-report sending, which go through the Node server.
 

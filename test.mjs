@@ -1,5 +1,5 @@
 /**
- * Carlton Finance — Comprehensive Test Suite
+ * Delta Academy Finance — Comprehensive Test Suite
  * 4 test cases per feature area
  */
 
@@ -52,7 +52,7 @@ async function testDbGet() {
     students: [{ id: 's1', name: 'Ali Hassan', program_id: 'p1', fee: 1200, currency: 'USD' }],
     payments: [],
     expenses: [],
-    settings: { academyName: 'Carlton Test', rates: { usdAed: 3.67, usdInr: 83.5 } }
+    settings: { academyName: 'Delta Test', rates: { usdAed: 3.67, usdInr: 83.5 } }
   };
   await req('PUT', '/db', seed);
 
@@ -63,7 +63,7 @@ async function testDbGet() {
 
   log('db-get', 'DB contains accounts array', Array.isArray(r.json?.accounts), `accounts count=${r.json?.accounts?.length}`);
 
-  log('db-get', 'DB settings preserved correctly', r.json?.settings?.academyName === 'Carlton Test', `name=${r.json?.settings?.academyName}`);
+  log('db-get', 'DB settings preserved correctly', r.json?.settings?.academyName === 'Delta Test', `name=${r.json?.settings?.academyName}`);
 }
 
 // ── 3. DATABASE — PUT /db ────────────────────────────────────
@@ -79,7 +79,7 @@ async function testDbPut() {
     expenses: [{ id: 'ex1', category_id: 'c1', amount: 200, currency: 'USD', status: 'pending' }],
     transfers: [],
     staff: [],
-    settings: { academyName: 'Carlton Finance', rates: { usdAed: 3.67, usdInr: 83.5 } }
+    settings: { academyName: 'Delta Academy Finance', rates: { usdAed: 3.67, usdInr: 83.5 } }
   };
   let r = await req('PUT', '/db', payload);
   log('db-put', 'PUT /db valid payload returns success', r.status === 200 && r.json?.success === true, `status=${r.status}`);
@@ -103,7 +103,7 @@ function cleanDB() {
   return {
     users: [], accounts: [], students: [], payments: [],
     expenses: [], transfers: [], staff: [], programs: [],
-    payrollRuns: [], settings: { academyName: 'Carlton Trading Academy', rates: { usdAed: 3.67, usdInr: 83.5 } }
+    payrollRuns: [], settings: { academyName: 'Delta Academy', rates: { usdAed: 3.67, usdInr: 83.5 } }
   };
 }
 
@@ -363,10 +363,10 @@ async function testSettings() {
   let db = (await req('GET', '/db')).json;
 
   // Case 1: update academy name
-  db.settings.academyName = 'Carlton Trading Academy';
+  db.settings.academyName = 'Delta Academy';
   await req('PUT', '/db', db);
   let fresh = (await req('GET', '/db')).json;
-  log('settings', 'Academy name update persisted', fresh.settings.academyName === 'Carlton Trading Academy', `name=${fresh.settings.academyName}`);
+  log('settings', 'Academy name update persisted', fresh.settings.academyName === 'Delta Academy', `name=${fresh.settings.academyName}`);
 
   // Case 2: update USD/AED rate
   fresh.settings.rates.usdAed = 3.72;
@@ -384,7 +384,7 @@ async function testSettings() {
   fresh.students = [];  // change something else
   await req('PUT', '/db', fresh);
   fresh = (await req('GET', '/db')).json;
-  log('settings', 'Settings survive alongside other DB writes', fresh.settings.rates.usdInr === 84.0 && fresh.settings.academyName === 'Carlton Trading Academy', `ok`);
+  log('settings', 'Settings survive alongside other DB writes', fresh.settings.rates.usdInr === 84.0 && fresh.settings.academyName === 'Delta Academy', `ok`);
 }
 
 // ── 13. OTP — SEND ───────────────────────────────────────────
@@ -477,13 +477,13 @@ async function testLargePayload() {
   log('payload', 'Large DB read back correctly', fresh.students.length === 500 && fresh.payments.length === 500, `students=${fresh.students.length} payments=${fresh.payments.length}`);
 
   // Restore clean DB
-  await req('PUT', '/db', { users: [], accounts: [], students: [], payments: [], expenses: [], transfers: [], staff: [], programs: [], settings: { academyName: 'Carlton Trading Academy', rates: { usdAed: 3.67, usdInr: 83.5 } } });
+  await req('PUT', '/db', { users: [], accounts: [], students: [], payments: [], expenses: [], transfers: [], staff: [], programs: [], settings: { academyName: 'Delta Academy', rates: { usdAed: 3.67, usdInr: 83.5 } } });
 }
 
 // ── RUN ALL ──────────────────────────────────────────────────
 async function run() {
   console.log('━'.repeat(52));
-  console.log('  Carlton Finance — Full Test Suite');
+  console.log('  Delta Academy Finance — Full Test Suite');
   console.log(`  Target: ${BASE}`);
   console.log('━'.repeat(52));
 

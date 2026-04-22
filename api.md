@@ -1,4 +1,4 @@
-# Carlton Finance — Server API
+# Delta Academy Finance — Server API
 
 Base URL (local dev): `http://localhost:3210`
 Base URL (prod, per `server.js`): `https://api.carltonedu.com`
@@ -14,7 +14,7 @@ Service banner / basic liveness.
 **Response 200**
 ```json
 {
-  "service": "Carlton Finance Server",
+  "service": "Delta Academy Finance Server",
   "status": "running",
   "time": "2026-04-22T07:25:49.136Z"
 }
@@ -48,7 +48,7 @@ Generate a 6-digit OTP for a given username and email the code to that user. Sto
 
 Side effects:
 - `otpStore.set(username.toLowerCase(), { otp, email, expires: now+600_000 })`
-- Sends HTML email from `no-replay@carltonedu.com` with subject `<OTP> — Carlton Finance password reset`
+- Sends HTML email from `no-replay@carltonedu.com` with subject `<OTP> — Delta Academy Finance password reset`
 
 ---
 

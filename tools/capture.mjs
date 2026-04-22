@@ -1,4 +1,4 @@
-// Drive the Carlton Finance UI and capture PNGs of each page.
+// Drive the Delta Academy Finance UI and capture PNGs of each page.
 // Not part of the app — ad-hoc tool for the testing report.
 
 import puppeteer from 'puppeteer';

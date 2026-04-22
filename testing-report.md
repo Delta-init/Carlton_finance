@@ -1,4 +1,4 @@
-# Carlton Finance — Testing Report
+# Delta Academy Finance — Testing Report
 
 **Date:** 2026-04-22
 **Environment:** Local (Node v24.14.1, macOS Darwin 24.6.0)
@@ -77,7 +77,7 @@ Driven by Puppeteer via `tools/capture.mjs`. For each nav page: open → wait �
 
 | # | Page               | File                              | Render OK | Seed content verified |
 |---|--------------------|-----------------------------------|-----------|-----------------------|
-| 1 | Login              | `screenshots/01-login.png`        | ✅ | Carlton logo, username/password fields, Sign-in button, Forgot-password link |
+| 1 | Login              | `screenshots/01-login.png`        | ✅ | Delta Academy wordmark, username/password fields, Sign-in button, Forgot-password link |
 | 2 | Dashboard          | `screenshots/02-dashboard.png`    | ✅ | 4 KPI tiles ($31.2k balance, $814.82 fees, $3.6k expenses, $-2833.99 net), 4 treasury accounts, 4 recent payments |
 | 3 | Treasury Accounts  | `screenshots/03-accounts.png`     | ✅ | 4 accounts listed (Emirates NBD, PayTabs, Cash on hand, HDFC Bank) |
 | 4 | Transfers          | `screenshots/04-transfers.png`    | ✅ | Transfer list table / empty-state rendered |
@@ -161,7 +161,7 @@ npm install
 
 # Terminal 1 — API
 npm start
-# → Carlton Finance Email Server on :3210
+# → Delta Academy Finance Email Server on :3210
 
 # Terminal 2 — Static UI
 npx --yes serve -l 4173 -s .

@@ -1,4 +1,4 @@
-# Carlton Finance Server — cPanel Deployment Guide
+# Delta Academy Finance Server — cPanel Deployment Guide
 # Host: carltonedu.com
 
 ## STEP 1 — Check Node.js is available in cPanel
