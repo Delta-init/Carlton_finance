@@ -113,6 +113,17 @@ A living log of issues discovered while setting up, analyzing, and running Carlt
 - **Fixed this session:** added `reconciliation: "Reconciliation"` to `PAGE_LABELS`, `reconciliation: "↑ Upload statement"` to `PAGE_ACTIONS`, `reconciliation: reconciliationPage` to the `fns` map, `reconciliation: () => triggerStatementUpload()` to the `actions` map, plus the full `reconciliationPage()` + helpers (`getAccountTransactions`, `buildDailyBreakdown`, `parseStatementCSV`, `parseFlexDate`, `autoMatchAll`, `modalMatchTxn`, `confirmManualMatch`, `ignore/unmatch/deleteReconRow`, `exportReconCSV`) and the hidden `<input id="stmt-upload-input">`.
 - **Status:** ✅ shipped.
 
+## M18 — Reconciliation reworked: manual-only + per-day segregated storage ✅
+
+- **Was:** `DB.reconciliations[accountId]` was a flat array of all statement rows; `autoMatchAll()` ran automatically after every upload; the page rendered one global "Daily transactions" table and one "Bank statement rows" table side by side.
+- **Why it changed (user feedback):** auto-matching produced false positives and obscured intent; operators wanted each day's internal txns and each day's uploaded rows to live together in one block, with matching done row-by-row.
+- **Fixed this session:**
+  - Removed `autoMatchAll()` entirely. No code path ever sets a row's `status` to `matched` without a human click.
+  - Storage is now `{ "YYYY-MM-DD": [rows] }` per account. A legacy-array sweep runs at the top of `reconciliationPage()` to auto-wipe any old flat-array data.
+  - Helpers added: `getAllStmtRows(accountId)` for summary/CSV, `findStmtRow(accountId, rowId)` for bucketed update/delete.
+  - `reconciliationPage()` renders one card per date (descending) with Internal (left) and Statement rows (right); per-day "Upload for this day" button forces rows into that date; global bulk upload still files by row's own date.
+  - All mutating helpers (`ignoreReconRow`, `unmatchReconRow`, `deleteReconRow`, `modalMatchTxn`, `confirmManualMatch`, `exportReconCSV`) rewritten to read/write the new shape.
+
 ## Setup-time mistakes encountered in *this* session
 
 | # | What happened | Recovery |

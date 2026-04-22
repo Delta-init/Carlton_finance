@@ -90,7 +90,7 @@ Driven by Puppeteer via `tools/capture.mjs`. For each nav page: open → wait �
 | 11| Reports            | `screenshots/11-reports.png`      | ✅ | Filters + export buttons present |
 | 12| Users              | `screenshots/12-users.png`        | ✅ | Admin user listed; role/active toggles present |
 | 13| Forgot password    | `screenshots/13-forgot-password.png` | ✅ | OTP form after clicking "Forgot password?" |
-| 14| Reconciliation     | `screenshots/14-reconciliation.png` | ✅ | 4 account tabs, 8-stat summary bar, daily txns breakdown, upload drop-zone, diff tile (AED −9,750 for Emirates NBD before any statement uploaded) |
+| 14| Reconciliation     | `screenshots/14-reconciliation.png` | ✅ | 4 account tabs, 8-stat summary bar, **per-day blocks** (02/01 Apr, 28 Mar for Emirates NBD) each with Internal Transactions (left) and Statement Rows (right), per-day "Upload for this day" button, manual-match only. Diff tile reads AED −9,750 until a matching statement is uploaded. |
 
 Zero console errors observed during the full tour (`preview_console_logs` returned empty).
 

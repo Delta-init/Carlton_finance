@@ -140,20 +140,27 @@ Only admin role.
 - FX rates (USD→AED, USD→INR)
 - Display currency selector
 
-## 15. Reconciliation (new)
+## 15. Reconciliation (manual-only, per-day segregated)
 
 Per-account bank-statement matching.
 
+**Storage shape:** `DB.reconciliations[accountId] = { "YYYY-MM-DD": [rows] }` — each day's rows live in their own bucket (legacy flat arrays are auto-wiped on load).
+
+**UI:** one card per date that has either internal txns or uploaded statement rows. Each card has two columns: **Internal transactions** (left, read-only) and **Statement rows** (right, with per-row Match / Ignore / Unmatch / Delete). A per-day "↑ Upload for this day" button forces every row in the upload into that day's bucket; the global "↑ Upload statement (any day)" lets rows file into their own date.
+
 | Action                        | Function                               |
 |-------------------------------|----------------------------------------|
-| Upload statement (CSV/TSV)    | `triggerStatementUpload()` → `handleStatementUpload()` |
+| Upload statement (CSV/TSV)    | `triggerStatementUpload(forDate?)` → `handleStatementUpload()` |
 | Parse flexible date formats   | `parseFlexDate()` (ISO, DD/MM/YYYY, DD-Mon-YYYY, native) |
-| Auto-match rows               | `autoMatchAll()` — date + amount + direction |
 | Manual match a row            | `modalMatchTxn()` → `confirmManualMatch()` |
 | Ignore / unmatch / delete row | `ignoreReconRow()` / `unmatchReconRow()` / `deleteReconRow()` |
+| Flat iteration helper         | `getAllStmtRows(accountId)` — summary stats, CSV export |
+| Bucketed lookup helper        | `findStmtRow(accountId, rowId)` — returns `{ row, date }` |
 | Export                        | `exportReconCSV()`                     |
 
-Summary bar shows matched / unmatched / ignored counts, statement balance vs. internal balance, and a **Difference** tile that turns green when balanced.
+Summary bar shows Account, days with data, matched / unmatched / ignored counts, statement balance vs. internal balance, and a **Difference** tile that turns green when balanced.
+
+**Auto-matching has been removed** — every match is confirmed manually through the row-level `Match` button.
 
 ## 16. Scheduled email reports
 
