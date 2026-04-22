@@ -1312,21 +1312,7 @@
             <div class="page-label" id="topbar-title">Dashboard</div>
           </div>
           <div class="topbar-right">
-            <div class="cur-switch">
-              <button class="cur-btn" id="cb-AED" onclick="setCur('AED')">
-                AED
-              </button>
-              <button
-                class="cur-btn active"
-                id="cb-USD"
-                onclick="setCur('USD')"
-              >
-                USD
-              </button>
-              <button class="cur-btn" id="cb-INR" onclick="setCur('INR')">
-                INR
-              </button>
-            </div>
+            <div class="cur-switch" id="cur-switch"></div>
             <button
               class="btn btn-sm btn-ghost"
               id="theme-toggle"
@@ -1628,7 +1614,7 @@
         manager: "ic-purple",
         staff: "ic-amber",
       };
-      const SYM = { USD: "$", AED: "AED ", INR: "₹" };
+      // SYM constant removed — use getSym(code) instead (it handles custom currencies).
 
       // ── STATE ────────────────────────────────────────────────────
       let DB = loadDB();
@@ -2095,6 +2081,9 @@
         nm.textContent = SESSION.name;
         rl.textContent = SESSION.role;
 
+        // Render the dynamic currency toggle (picks up any custom currencies).
+        renderCurrencyToggle();
+
         // Hide nav items based on role
         const staffOnly = SESSION.role === "staff";
         const pages = [
@@ -2132,20 +2121,32 @@
       }
 
       // ── FX ───────────────────────────────────────────────────────
+      const BUILTIN_CURRENCIES = ["USD", "AED", "INR"];
       function rates() {
-        return DB.settings.rates;
+        // returns { CODE: "units per 1 USD" } across built-ins + custom
+        const r = DB.settings.rates || {};
+        const out = { USD: 1, AED: r.usdAed || 3.67, INR: r.usdInr || 83.5 };
+        (DB.settings.customCurrencies || []).forEach((c) => {
+          if (c && c.code && c.usdRate > 0) out[c.code] = c.usdRate;
+        });
+        return out;
+      }
+      function getSym(code) {
+        const builtins = { USD: "$", AED: "AED ", INR: "₹" };
+        if (builtins[code]) return builtins[code];
+        const cc = (DB.settings.customCurrencies || []).find((c) => c.code === code);
+        return cc && cc.symbol ? cc.symbol + " " : code + " ";
+      }
+      function allCurrencyCodes() {
+        return [...BUILTIN_CURRENCIES, ...(DB.settings.customCurrencies || []).map((c) => c.code)];
       }
       function toUSD(amt, cur) {
-        if (cur === "USD") return amt;
-        if (cur === "AED") return amt / rates().usdAed;
-        if (cur === "INR") return amt / rates().usdInr;
-        return amt;
+        const r = rates()[cur];
+        return r ? amt / r : amt;
       }
       function fromUSD(amt, cur) {
-        if (cur === "USD") return amt;
-        if (cur === "AED") return amt * rates().usdAed;
-        if (cur === "INR") return amt * rates().usdInr;
-        return amt;
+        const r = rates()[cur];
+        return r ? amt * r : amt;
       }
       function cvt(amt, from, to) {
         return fromUSD(toUSD(amt, from), to);
@@ -2153,14 +2154,14 @@
       function fmt(usdAmt, cur) {
         cur = cur || CUR;
         const v = fromUSD(usdAmt, cur);
-        const s = SYM[cur];
+        const s = getSym(cur);
         if (cur === "INR") return s + Math.round(v).toLocaleString();
         if (v >= 1000000) return s + (v / 1000000).toFixed(2) + "M";
         if (v >= 1000) return s + (v / 1000).toFixed(1) + "k";
         return s + v.toFixed(2);
       }
       function fmtOrig(amt, cur) {
-        const s = SYM[cur];
+        const s = getSym(cur);
         if (cur === "INR") return s + Math.round(amt).toLocaleString();
         return (
           s +
@@ -2170,13 +2171,16 @@
           })
         );
       }
+      function renderCurrencyToggle() {
+        const el = document.getElementById("cur-switch");
+        if (!el) return;
+        el.innerHTML = allCurrencyCodes()
+          .map((c) => `<button class="cur-btn${c === CUR ? " active" : ""}" id="cb-${c}" onclick="setCur('${c}')">${c}</button>`)
+          .join("");
+      }
       function setCur(c) {
         CUR = c;
-        ["AED", "USD", "INR"].forEach((x) =>
-          document
-            .getElementById("cb-" + x)
-            .classList.toggle("active", x === c),
-        );
+        renderCurrencyToggle();
         renderCurrentPage();
       }
       function updateFxSidebar() {
@@ -2340,7 +2344,7 @@
           .join("");
       }
       function curOptions(sel) {
-        return ["AED", "USD", "INR"]
+        return allCurrencyCodes()
           .map(
             (c) =>
               `<option value="${c}"${c === sel ? " selected" : ""}>${c}</option>`,
@@ -2395,7 +2399,8 @@
       function curBadge(c) {
         if (c === "AED") return `<span class="badge b-blue">AED</span>`;
         if (c === "INR") return `<span class="badge b-orange">INR</span>`;
-        return `<span class="badge b-gray">USD</span>`;
+        if (c === "USD") return `<span class="badge b-gray">USD</span>`;
+        return `<span class="badge b-purple">${c}</span>`;
       }
       function methodDot(m) {
         if (m === "PSP") return `<span class="dot dot-psp"></span>`;
@@ -2571,16 +2576,20 @@
       // ── PAGE: FX ─────────────────────────────────────────────────
       function fx() {
         const r = rates(),
-          derived = (r.usdInr / r.usdAed).toFixed(4);
+          builtIn = DB.settings.rates || {},
+          usdAed = builtIn.usdAed || 3.67,
+          usdInr = builtIn.usdInr || 83.5,
+          derived = (usdInr / usdAed).toFixed(4);
         const canEdit = perm("canEdit") || perm("canManageUsers");
+        const custom = DB.settings.customCurrencies || [];
         return `<div class="grid2">
     <div class="card">
-      <div class="card-header"><div class="card-title">Exchange rates</div></div>
+      <div class="card-header"><div class="card-title">Built-in exchange rates</div></div>
       <table>
         <tr><th>Pair</th><th>Rate</th><th></th></tr>
-        <tr><td>1 USD → AED</td><td><input id="fx-usd-aed" type="number" step="0.01" value="${r.usdAed}" style="width:90px;background:var(--bg3);border:1px solid var(--border2);border-radius:4px;padding:4px 8px;font-size:13px;color:var(--text);font-family:var(--mono)"${canEdit ? "" : " disabled"}></td>
+        <tr><td>1 USD → AED</td><td><input id="fx-usd-aed" type="number" step="0.01" value="${usdAed}" style="width:90px;background:var(--bg3);border:1px solid var(--border2);border-radius:4px;padding:4px 8px;font-size:13px;color:var(--text);font-family:var(--mono)"${canEdit ? "" : " disabled"}></td>
           <td>${canEdit ? `<button class="btn btn-sm btn-accent" onclick="saveFX()">Apply</button>` : ""}</td></tr>
-        <tr><td>1 USD → INR</td><td><input id="fx-usd-inr" type="number" step="0.1" value="${r.usdInr}" style="width:90px;background:var(--bg3);border:1px solid var(--border2);border-radius:4px;padding:4px 8px;font-size:13px;color:var(--text);font-family:var(--mono)"${canEdit ? "" : " disabled"}></td>
+        <tr><td>1 USD → INR</td><td><input id="fx-usd-inr" type="number" step="0.1" value="${usdInr}" style="width:90px;background:var(--bg3);border:1px solid var(--border2);border-radius:4px;padding:4px 8px;font-size:13px;color:var(--text);font-family:var(--mono)"${canEdit ? "" : " disabled"}></td>
           <td>${canEdit ? `<button class="btn btn-sm btn-accent" onclick="saveFX()">Apply</button>` : ""}</td></tr>
         <tr><td>1 AED → INR</td><td><span class="mono" id="fx-derived">${derived}</span></td><td class="text3" style="font-size:11px">Auto-derived</td></tr>
       </table>
@@ -2595,6 +2604,27 @@
         <div style="font-size:20px;font-weight:600;font-family:var(--mono);color:var(--accent)" id="conv-result">$272.48</div>
       </div>
     </div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <div class="card-header">
+      <div class="card-title">Custom currencies (${custom.length})</div>
+      ${canEdit ? `<button class="btn btn-sm btn-accent" onclick="openModal(modalAddCurrency())">+ Add currency</button>` : ""}
+    </div>
+    ${custom.length === 0
+      ? `<div class="text3" style="font-size:12px;padding:8px 0">No custom currencies yet. Click <strong>+ Add currency</strong> to extend the currency list beyond USD, AED and INR.</div>`
+      : `<div class="tbl-wrap"><table>
+          <tr><th>Code</th><th>Symbol</th><th>1 USD =</th><th>Used in</th><th></th></tr>
+          ${custom.map((c) => {
+            const uses = countCurrencyUsage(c.code);
+            return `<tr>
+              <td><span class="badge b-purple">${c.code}</span></td>
+              <td class="mono">${c.symbol || "—"}</td>
+              <td class="mono">${c.usdRate}</td>
+              <td class="text2">${uses === 0 ? `<span class="text3">unused</span>` : `${uses} record${uses === 1 ? "" : "s"}`}</td>
+              <td style="text-align:right">${canEdit ? `<button class="btn btn-sm btn-danger" onclick="deleteCurrency('${c.code}')">Delete</button>` : ""}</td>
+            </tr>`;
+          }).join("")}
+        </table></div>`}
   </div>`;
       }
 
@@ -4640,6 +4670,69 @@
         closeModal();
         renderCurrentPage();
         toast(id ? "Staff updated" : "Staff added");
+      }
+
+      // ── CUSTOM CURRENCY ──────────────────────────────────────────
+      function modalAddCurrency() {
+        return `<div class="modal-title">Add custom currency</div>
+          <div class="form-row2 form-row2-wrap">
+            <div class="field"><label>Code (3 letters)</label>
+              <input id="f-cur-code" maxlength="3" placeholder="e.g. GBP" style="text-transform:uppercase"></div>
+            <div class="field"><label>Symbol (optional)</label>
+              <input id="f-cur-sym" maxlength="4" placeholder="e.g. £"></div>
+          </div>
+          <div class="field"><label>Rate: 1 USD = ? in this currency</label>
+            <input id="f-cur-rate" type="number" step="0.0001" min="0.0001" placeholder="e.g. 0.79"></div>
+          <div class="text3" style="font-size:11px;margin-top:-4px">The new code appears in every currency picker and the top-bar toggle.</div>
+          <div class="modal-actions">
+            <button class="btn" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-accent" onclick="saveCurrency()">Add currency</button>
+          </div>`;
+      }
+      function saveCurrency() {
+        const code = (v("f-cur-code") || "").trim().toUpperCase();
+        const symbol = (v("f-cur-sym") || "").trim();
+        const rate = parseFloat(v("f-cur-rate"));
+        if (!/^[A-Z]{3}$/.test(code)) { toast("Code must be 3 letters", "amber"); return; }
+        if (BUILTIN_CURRENCIES.includes(code)) { toast(`${code} is built-in — edit it on the Built-in rates card`, "amber"); return; }
+        if (!rate || rate <= 0) { toast("Rate must be positive", "amber"); return; }
+        if (!DB.settings.customCurrencies) DB.settings.customCurrencies = [];
+        const existing = DB.settings.customCurrencies.find((c) => c.code === code);
+        if (existing) { existing.symbol = symbol; existing.usdRate = rate; }
+        else DB.settings.customCurrencies.push({ code, symbol, usdRate: rate });
+        logActivity("currency", `${existing ? "Updated" : "Added"} custom currency: ${code} (1 USD = ${rate} ${code})`);
+        saveDB();
+        closeModal();
+        renderCurrencyToggle();
+        renderCurrentPage();
+        toast(`${code} saved`);
+      }
+      function deleteCurrency(code) {
+        if (!DB.settings.customCurrencies) return;
+        const uses = countCurrencyUsage(code);
+        const msg = uses > 0
+          ? `Delete ${code}? ${uses} existing record(s) will keep the code but lose the conversion rate until you re-add it.`
+          : `Delete ${code}?`;
+        if (!confirm(msg)) return;
+        DB.settings.customCurrencies = DB.settings.customCurrencies.filter((c) => c.code !== code);
+        // If the user was viewing that currency, fall back to USD.
+        if (CUR === code) CUR = "USD";
+        logActivity("currency", `Deleted custom currency: ${code}`);
+        saveDB();
+        renderCurrencyToggle();
+        renderCurrentPage();
+        toast(`${code} deleted`);
+      }
+      function countCurrencyUsage(code) {
+        let n = 0;
+        DB.accounts.forEach((a) => { if (a.currency === code) n++; });
+        DB.students.forEach((s) => { if (s.feeCurrency === code) n++; });
+        DB.payments.forEach((p) => { if (p.currency === code) n++; });
+        DB.expenses.forEach((e) => { if (e.currency === code) n++; });
+        DB.staff.forEach((st) => { if (st.currency === code) n++; });
+        (DB.transfers || []).forEach((t) => { if (t.fromCur === code || t.toCur === code) n++; });
+        (DB.programs || []).forEach((p) => { if (p.feeCurrency === code) n++; });
+        return n;
       }
 
       // ── ACTIONS ──────────────────────────────────────────────────
