@@ -3,3 +3,7 @@ node_modules
 package-lock.json
 nginx.conf
 db.json
+index.html.bak
+.claude/
+screenshots/
+.DS_Store

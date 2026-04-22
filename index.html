@@ -871,6 +871,26 @@
         margin-top: 8px;
         display: none;
       }
+      /* ── RECONCILIATION ───────────────────────────────────────── */
+      .recon-tabs{display:flex;gap:4px;margin-bottom:16px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:4px;flex-wrap:wrap}
+      .recon-tab{flex:1;min-width:120px;padding:7px 10px;border-radius:6px;border:none;background:transparent;cursor:pointer;font-size:12px;color:var(--text2);font-family:var(--font);text-align:center;transition:all .15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .recon-tab.active{background:var(--accent);color:#fff;font-weight:600}
+      .recon-tab:hover:not(.active){background:var(--bg3);color:var(--text)}
+      .recon-status{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:600;font-family:var(--mono)}
+      .rs-matched{background:rgba(74,222,128,.15);color:var(--green)}
+      .rs-unmatched{background:rgba(255,92,92,.15);color:var(--red)}
+      .rs-pending{background:rgba(255,181,71,.15);color:var(--amber)}
+      .rs-ignored{background:var(--bg3);color:var(--text3)}
+      .upload-zone{border:2px dashed var(--border2);border-radius:var(--radius);padding:32px;text-align:center;cursor:pointer;transition:border-color .2s;margin-bottom:16px}
+      .upload-zone:hover{border-color:var(--accent)}
+      .upload-zone .uz-icon{font-size:32px;margin-bottom:8px}
+      .upload-zone .uz-title{font-size:14px;font-weight:600;margin-bottom:4px}
+      .upload-zone .uz-sub{font-size:11px;color:var(--text3);font-family:var(--mono)}
+      .recon-summary-bar{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+      .recon-stat{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;flex:1;min-width:100px}
+      .recon-stat .rs-val{font-size:18px;font-weight:600;font-family:var(--mono);margin-top:2px}
+      .recon-stat .rs-lbl{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-family:var(--mono)}
+      .diff-pos{color:var(--green)}.diff-neg{color:var(--red)}.diff-zero{color:var(--text3)}
     </style>
   </head>
   <body>
@@ -1211,6 +1231,11 @@
             <path d="M2 12l3-4 3 2 3-5 3 3" />
             <rect x="2" y="2" width="12" height="12" rx="1.5" /></svg
           >Reports
+        </div>
+        <div class="nav-item" id="nav-reconciliation" onclick="nav('reconciliation', this)">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M2 4h12M2 8h8M2 12h5"/><path d="M11 10l1.5 1.5L15 8"/>
+          </svg>Reconciliation
         </div>
         <div class="nav-item" id="nav-users" onclick="nav('users', this)">
           <svg
@@ -2132,6 +2157,7 @@
         payroll: "Payroll",
         reminders: "Reminders",
         reports: "Reports",
+        reconciliation: "Reconciliation",
         users: "User Management",
       };
       const PAGE_ACTIONS = {
@@ -2142,6 +2168,7 @@
         payments: "+ Record payment",
         expenses: "+ Add expense",
         payroll: "+ Add staff",
+        reconciliation: "↑ Upload statement",
         users: "+ Add user",
       };
       function nav(page, el) {
@@ -2190,6 +2217,7 @@
           payments: () => openModal(modalAddPayment()),
           expenses: () => openModal(modalAddExpense()),
           payroll: () => openModal(modalAddStaff()),
+          reconciliation: () => triggerStatementUpload(),
           users: () => openModal(modalAddUser()),
         };
         if (actions[currentPage]) actions[currentPage]();
@@ -2207,6 +2235,7 @@
           payroll,
           reminders,
           reports,
+          reconciliation: reconciliationPage,
           users: usersPage,
         };
         if (fns[currentPage])
@@ -3473,7 +3502,12 @@
       }
 
       // ── FORGOT PASSWORD (OTP via email) ──────────────────────────
-      const EMAIL_SERVER = "https://api-finance.carltonedu.com";
+      const EMAIL_SERVER =
+        location.hostname === "localhost" ||
+        location.hostname === "127.0.0.1" ||
+        location.protocol === "file:"
+          ? "http://localhost:3210"
+          : "https://api-finance.carltonedu.com";
       let _fpUsername = ""; // track username across OTP steps
 
       async function doSendOtp() {
@@ -5112,6 +5146,187 @@
         win.document.close();
       }
 
+      // ── RECONCILIATION ────────────────────────────────────────────
+      let RECON_ACCOUNT_ID = null;
+      let RECON_DATE_FILTER = '';
+
+      function reconciliationPage(){
+        if(!DB.reconciliations) DB.reconciliations = {};
+        const canEdit = perm('canEdit') || perm('canCreate');
+        const tabsHtml = DB.accounts.map(a=>{
+          const stmts = DB.reconciliations[a.id] || [];
+          const lastDate = stmts.length ? stmts[stmts.length-1].uploadDate : null;
+          const isActive = a.id === RECON_ACCOUNT_ID;
+          return `<button class="recon-tab${isActive?' active':''}" onclick="setReconAccount('${a.id}')" title="${a.name}">${a.name}<br><span style="font-size:9px;opacity:.7">${a.currency}${lastDate?' · '+dateStr(lastDate):''}</span></button>`;
+        }).join('');
+        if(!RECON_ACCOUNT_ID && DB.accounts.length) RECON_ACCOUNT_ID = DB.accounts[0].id;
+        const acc = getAccount(RECON_ACCOUNT_ID);
+        const stmts = (DB.reconciliations[RECON_ACCOUNT_ID] || []);
+        const totalStmtTxns = stmts.length;
+        const matched   = stmts.filter(s=>s.status==='matched').length;
+        const unmatched = stmts.filter(s=>s.status==='unmatched').length;
+        const ignored   = stmts.filter(s=>s.status==='ignored').length;
+        const stmtBalance = stmts.reduce((sum,s)=>sum+(s.type==='credit'?s.amount:-s.amount), 0);
+        const internalTxns = getAccountTransactions(RECON_ACCOUNT_ID);
+        const internalBalance = internalTxns.reduce((sum,t)=>sum+t.net, 0);
+        const diff = stmtBalance - internalBalance;
+        const dateFilter = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap"><span class="text3" style="font-size:11px;font-family:var(--mono)">FILTER BY DATE</span><input type="date" id="recon-date-filter" value="${RECON_DATE_FILTER}" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:5px 8px;font-size:12px;color:var(--text);font-family:var(--mono)" onchange="RECON_DATE_FILTER=this.value;renderCurrentPage()">${RECON_DATE_FILTER?`<button class="btn btn-sm btn-ghost" onclick="RECON_DATE_FILTER='';renderCurrentPage()">Clear</button>`:''}<div style="margin-left:auto;display:flex;gap:6px"><button class="btn btn-sm" onclick="triggerStatementUpload()">↑ Upload statement</button>${stmts.length?`<button class="btn btn-sm" onclick="exportReconCSV('${RECON_ACCOUNT_ID}')">↓ Export CSV</button>`:''}${unmatched>0&&canEdit?`<button class="btn btn-sm btn-accent" onclick="autoMatchAll('${RECON_ACCOUNT_ID}')">⚡ Auto-match all</button>`:''}</div></div>`;
+        const filtered = RECON_DATE_FILTER ? stmts.filter(s=>s.date===RECON_DATE_FILTER) : stmts;
+        const stmtTable = filtered.length === 0 ? `<div class="upload-zone" onclick="triggerStatementUpload()"><div class="uz-icon">📄</div><div class="uz-title">${stmts.length===0?'Upload bank statement':'No transactions for this date'}</div><div class="uz-sub">${stmts.length===0?'CSV · TXT · Excel supported — drag & drop or click to browse':'Change the date filter or upload a new statement'}</div></div>` : `<div class="tbl-wrap"><table><tr><th>Date</th><th>Description</th><th>Type</th><th>Amount (${acc.currency})</th><th>Matched to</th><th>Difference</th><th>Status</th><th></th></tr>${filtered.map(s=>{const matchedTxn = s.matchedId ? internalTxns.find(t=>t.id===s.matchedId) : null; const diffAmt = matchedTxn ? (s.amount - Math.abs(matchedTxn.net)) : null; const diffHtml = diffAmt!==null?`<span class="mono ${diffAmt===0?'diff-zero':diffAmt>0?'diff-pos':'diff-neg'}" style="font-size:12px">${diffAmt===0?'✓':diffAmt>0?'+':''} ${diffAmt===0?'Exact':fmtOrig(Math.abs(diffAmt),acc.currency)}</span>`:`<span class="text3" style="font-size:11px">—</span>`; return `<tr><td class="mono text3">${dateStr(s.date)}</td><td style="max-width:220px;font-size:12px">${s.description}</td><td>${s.type==='credit'?`<span class="badge b-green">Credit ↑</span>`:`<span class="badge b-red">Debit ↓</span>`}</td><td class="mono ${s.type==='credit'?'green':'red'}">${s.type==='credit'?'+':'−'}${fmtOrig(s.amount,acc.currency)}</td><td style="font-size:11px;max-width:160px">${matchedTxn?`<div style="color:var(--text2)">${matchedTxn.label}</div><div class="mono text3" style="font-size:10px">${fmtOrig(Math.abs(matchedTxn.net),acc.currency)}</div>`:(s.status==='ignored'?`<span class="text3" style="font-size:11px">Ignored</span>`:`<button class="btn btn-sm" onclick="openModal(modalMatchTxn('${RECON_ACCOUNT_ID}','${s.id}'))">Match</button>`)}</td><td>${diffHtml}</td><td><span class="recon-status rs-${s.status}">${s.status}</span></td><td style="white-space:nowrap">${s.status!=='ignored'&&canEdit?`<button class="btn btn-sm btn-ghost" onclick="ignoreReconRow('${RECON_ACCOUNT_ID}','${s.id}')" title="Ignore">✕</button>`:''}${s.status==='matched'&&canEdit?`<button class="btn btn-sm btn-ghost" onclick="unmatchReconRow('${RECON_ACCOUNT_ID}','${s.id}')" title="Unmatch">↩</button>`:''}${canEdit?`<button class="btn btn-sm btn-danger" onclick="deleteReconRow('${RECON_ACCOUNT_ID}','${s.id}')">Del</button>`:''}</td></tr>`;}).join('')}</table></div>`;
+        return `${DB.accounts.length===0?`<div class="empty"><div class="empty-text">No treasury accounts yet — add one first</div></div>`:`<div class="recon-tabs">${tabsHtml}</div><div class="recon-summary-bar"><div class="recon-stat"><div class="rs-lbl">Account</div><div class="rs-val" style="font-size:14px;color:var(--text)">${acc.name}</div></div><div class="recon-stat"><div class="rs-lbl">Statement txns</div><div class="rs-val">${totalStmtTxns}</div></div><div class="recon-stat"><div class="rs-lbl">Matched</div><div class="rs-val green">${matched}</div></div><div class="recon-stat"><div class="rs-lbl">Unmatched</div><div class="rs-val ${unmatched>0?'red':'text3'}">${unmatched}</div></div><div class="recon-stat"><div class="rs-lbl">Ignored</div><div class="rs-val text3">${ignored}</div></div><div class="recon-stat"><div class="rs-lbl">Statement bal</div><div class="rs-val mono" style="font-size:14px">${fmtOrig(stmtBalance,acc.currency)}</div></div><div class="recon-stat"><div class="rs-lbl">Internal bal</div><div class="rs-val mono" style="font-size:14px">${fmtOrig(internalBalance,acc.currency)}</div></div><div class="recon-stat" style="border-color:${Math.abs(diff)<0.01?'var(--green)':'var(--red)'}"><div class="rs-lbl">Difference</div><div class="rs-val mono ${Math.abs(diff)<0.01?'green':'red'}" style="font-size:14px">${Math.abs(diff)<0.01?'✓ Balanced':(diff>0?'+':'')+fmtOrig(diff,acc.currency)}</div></div></div><div class="card" style="margin-bottom:14px"><div class="card-header"><div class="card-title">Daily transactions — ${acc.name}</div></div>${buildDailyBreakdown(RECON_ACCOUNT_ID, acc)}</div><div class="card"><div class="card-header"><div class="card-title">Bank statement rows${RECON_DATE_FILTER?' · '+dateStr(RECON_DATE_FILTER):` · ${filtered.length} of ${stmts.length}`}</div></div>${dateFilter}${stmtTable}</div>`}`;
+      }
+
+      function buildDailyBreakdown(accountId, acc){
+        const txns = getAccountTransactions(accountId);
+        if(!txns.length) return `<div class="empty"><div class="empty-text">No transactions recorded for this account yet</div></div>`;
+        const byDate = {};
+        txns.forEach(t=>{ if(!byDate[t.date]) byDate[t.date]=[]; byDate[t.date].push(t); });
+        const dates = Object.keys(byDate).sort().reverse();
+        return `<div class="tbl-wrap"><table><tr><th>Date</th><th>Type</th><th>Description</th><th>In</th><th>Out</th><th>Net</th></tr>${dates.map(date=>{const rows = byDate[date]; return rows.map((r,i)=>`<tr><td class="mono text3"${i===0?` rowspan="${rows.length}"`:''}${i>0?' style="display:none"':''}>${i===0?dateStr(date):''}</td><td>${r.typeBadge}</td><td style="font-size:12px;max-width:200px">${r.label}</td><td class="mono green">${r.net>0?fmtOrig(r.net,acc.currency):'—'}</td><td class="mono red">${r.net<0?fmtOrig(Math.abs(r.net),acc.currency):'—'}</td><td class="mono ${r.net>=0?'green':'red'}">${r.net>=0?'+':''}${fmtOrig(r.net,acc.currency)}</td></tr>`).join('');}).join('')}</table></div>`;
+      }
+
+      function getAccountTransactions(accountId){
+        const acc = getAccount(accountId);
+        const txns = [];
+        DB.payments.forEach(p=>{ if(p.accountId!==accountId) return; const st = getStudent(p.studentId); txns.push({id:'pay_'+p.id, date:p.date, type:'payment', typeBadge:`<span class="badge b-green">Payment</span>`, label:`${st.name||'?'} — ${st.program||'fee'}${p.ref?' ('+p.ref+')':''}`, net: cvt(p.amount, p.currency, acc.currency)}); });
+        DB.expenses.forEach(e=>{ if(e.accountId!==accountId) return; txns.push({id:'exp_'+e.id, date:e.date, type:'expense', typeBadge:`<span class="badge b-red">Expense</span>`, label:`${e.description} (${e.category}${e.subcategory?'/'+e.subcategory:''})`, net: -cvt(e.amount, e.currency, acc.currency)}); });
+        DB.transfers.forEach(t=>{ if(t.fromId!==accountId) return; const ta = getAccount(t.toId); txns.push({id:'trout_'+t.id, date:t.date, type:'transfer_out', typeBadge:`<span class="badge b-amber">Transfer Out</span>`, label:`To ${ta.name||'?'} — ${t.reason||''}`, net: -t.amount}); });
+        DB.transfers.forEach(t=>{ if(t.toId!==accountId) return; const fa = getAccount(t.fromId); const inAmt = t.fromCur===acc.currency ? t.amount : t.amount*t.fxRate; txns.push({id:'trin_'+t.id, date:t.date, type:'transfer_in', typeBadge:`<span class="badge b-blue">Transfer In</span>`, label:`From ${fa.name||'?'} — ${t.reason||''}`, net: inAmt}); });
+        return txns.sort((a,b)=>a.date<b.date?1:-1);
+      }
+
+      function setReconAccount(id){ RECON_ACCOUNT_ID = id; RECON_DATE_FILTER = ''; renderCurrentPage(); }
+
+      function triggerStatementUpload(){
+        const inp = document.getElementById('stmt-upload-input');
+        if(inp){ inp.value=''; inp.click(); }
+      }
+
+      function handleStatementUpload(input){
+        const file = input.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e){
+          const rows = parseStatementCSV(e.target.result, file.name);
+          if(!rows || rows.length===0){ toast('No transactions found — check format','amber'); return; }
+          if(!DB.reconciliations) DB.reconciliations={};
+          if(!DB.reconciliations[RECON_ACCOUNT_ID]) DB.reconciliations[RECON_ACCOUNT_ID]=[];
+          const today_str = today();
+          let added=0, skipped=0;
+          rows.forEach(row=>{
+            const dup = DB.reconciliations[RECON_ACCOUNT_ID].find(s=>s.date===row.date && s.description===row.description && Math.abs(s.amount-row.amount)<0.01);
+            if(dup){ skipped++; return; }
+            DB.reconciliations[RECON_ACCOUNT_ID].push({id:uid(), date:row.date, description:row.description, amount:row.amount, type:row.type, status:'pending', matchedId:null, uploadDate:today_str});
+            added++;
+          });
+          autoMatchAll(RECON_ACCOUNT_ID, true);
+          saveDB(); renderCurrentPage();
+          toast(`Imported ${added} rows${skipped?' ('+skipped+' dup skipped)':''}`);
+        };
+        reader.readAsText(file);
+      }
+
+      function parseStatementCSV(text){
+        const rows = [];
+        const lines = text.split(/\r?\n/).filter(l=>l.trim());
+        if(lines.length < 2) return rows;
+        const delim = lines[0].includes('\t') ? '\t' : ',';
+        const headers = lines[0].split(delim).map(h=>h.replace(/['"]/g,'').trim().toLowerCase());
+        const dateIdx   = headers.findIndex(h=>h.includes('date'));
+        const descIdx   = headers.findIndex(h=>h.includes('desc')||h.includes('narr')||h.includes('detail')||h.includes('particular')||h.includes('remark'));
+        const creditIdx = headers.findIndex(h=>h.includes('credit')||h.includes('deposit')||h==='in');
+        const debitIdx  = headers.findIndex(h=>h.includes('debit')||h.includes('withdraw')||h==='out');
+        const amtIdx    = headers.findIndex(h=>h==='amount'||h==='amt');
+        const typeIdx   = headers.findIndex(h=>h==='type'||h==='dr/cr'||h==='cr/dr');
+        for(let i=1; i<lines.length; i++){
+          const cols = lines[i].split(delim).map(c=>c.replace(/['"]/g,'').trim());
+          if(cols.length < 2) continue;
+          const parsedDate = parseFlexDate(dateIdx>=0 ? cols[dateIdx] : cols[0]);
+          if(!parsedDate) continue;
+          const desc = (descIdx>=0 ? cols[descIdx] : (cols[1]||'Transaction')) || 'Transaction';
+          let amount=0, type='debit';
+          if(creditIdx>=0 && debitIdx>=0){
+            const cr = parseFloat((cols[creditIdx]||'').replace(/[,\s]/g,'')||0)||0;
+            const dr = parseFloat((cols[debitIdx]||'').replace(/[,\s]/g,'')||0)||0;
+            if(cr>0){ amount=cr; type='credit'; } else if(dr>0){ amount=dr; type='debit'; } else continue;
+          } else if(amtIdx>=0){
+            amount = Math.abs(parseFloat((cols[amtIdx]||'').replace(/[,\s]/g,'')||0)||0);
+            if(typeIdx>=0){ const t = (cols[typeIdx]||'').toLowerCase(); type = (t.includes('cr')||t.includes('credit')||t.includes('deposit')) ? 'credit' : 'debit'; }
+            else { type = (parseFloat((cols[amtIdx]||'').replace(/[,\s]/g,'')||0)||0)>=0 ? 'credit':'debit'; }
+          } else continue;
+          if(amount<=0) continue;
+          rows.push({ date:parsedDate, description:desc.substring(0,200), amount, type });
+        }
+        return rows;
+      }
+
+      function parseFlexDate(str){
+        if(!str) return null; str = str.trim();
+        if(/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+        let m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+        if(m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+        m = str.match(/^(\d{1,2})[\-\/\s]([A-Za-z]{3})[\-\/\s](\d{4})$/);
+        if(m){ const months={jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'}; const mo = months[m[2].toLowerCase()]; if(mo) return `${m[3]}-${mo}-${m[1].padStart(2,'0')}`; }
+        const d = new Date(str);
+        if(!isNaN(d.getTime())) return d.toISOString().slice(0,10);
+        return null;
+      }
+
+      function autoMatchAll(accountId, silent){
+        if(!DB.reconciliations) return;
+        const stmts = DB.reconciliations[accountId] || [];
+        const txns = getAccountTransactions(accountId);
+        let matchCount = 0;
+        stmts.forEach(s=>{
+          if(s.status!=='pending') return;
+          const match = txns.find(t=>{
+            if(stmts.find(ss=>ss.matchedId===t.id && ss.id!==s.id)) return false;
+            const samedir = (s.type==='credit' && t.net>0) || (s.type==='debit' && t.net<0);
+            const sameamt = Math.abs(Math.abs(t.net) - s.amount) < 0.02;
+            const samedate = t.date === s.date;
+            return samedir && sameamt && samedate;
+          });
+          if(match){ s.status='matched'; s.matchedId=match.id; matchCount++; } else { s.status='unmatched'; }
+        });
+        if(!silent){ saveDB(); renderCurrentPage(); toast(`Auto-matched ${matchCount} row${matchCount!==1?'s':''}`); }
+      }
+
+      function ignoreReconRow(accountId, rowId){ const s = (DB.reconciliations[accountId]||[]).find(r=>r.id===rowId); if(s){ s.status='ignored'; s.matchedId=null; saveDB(); renderCurrentPage(); toast('Row ignored'); } }
+      function unmatchReconRow(accountId, rowId){ const s = (DB.reconciliations[accountId]||[]).find(r=>r.id===rowId); if(s){ s.status='unmatched'; s.matchedId=null; saveDB(); renderCurrentPage(); toast('Match removed'); } }
+      function deleteReconRow(accountId, rowId){ if(!DB.reconciliations[accountId]) return; DB.reconciliations[accountId] = DB.reconciliations[accountId].filter(r=>r.id!==rowId); saveDB(); renderCurrentPage(); toast('Row deleted'); }
+
+      function modalMatchTxn(accountId, stmtRowId){
+        const stmts = DB.reconciliations[accountId]||[];
+        const s = stmts.find(r=>r.id===stmtRowId);
+        if(!s) return '<div class="modal-title">Not found</div>';
+        const acc = getAccount(accountId);
+        const txns = getAccountTransactions(accountId);
+        const usedIds = new Set(stmts.filter(r=>r.matchedId&&r.id!==stmtRowId).map(r=>r.matchedId));
+        const available = txns.filter(t=>!usedIds.has(t.id));
+        return `<div class="modal-title">Match statement row</div><div style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:14px"><div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:4px">STATEMENT ROW</div><div style="font-weight:600">${dateStr(s.date)} — ${s.description}</div><div class="mono ${s.type==='credit'?'green':'red'}" style="margin-top:4px">${s.type==='credit'?'+':'−'}${fmtOrig(s.amount,acc.currency)} (${s.type})</div></div><div class="field"><label>Match to internal transaction</label><select id="match-txn-id" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:8px 11px;font-size:12px;color:var(--text)"><option value="">— Select transaction —</option>${available.map(t=>`<option value="${t.id}">${dateStr(t.date)} · ${t.label.substring(0,50)} · ${t.net>=0?'+':''}${fmtOrig(t.net,acc.currency)}</option>`).join('')}</select></div><div class="modal-actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-accent" onclick="confirmManualMatch('${accountId}','${stmtRowId}')">Match</button></div>`;
+      }
+
+      function confirmManualMatch(accountId, stmtRowId){
+        const txnId = document.getElementById('match-txn-id').value;
+        if(!txnId){ toast('Select a transaction','amber'); return; }
+        const s = (DB.reconciliations[accountId]||[]).find(r=>r.id===stmtRowId);
+        if(s){ s.matchedId=txnId; s.status='matched'; saveDB(); closeModal(); renderCurrentPage(); toast('Matched'); }
+      }
+
+      function exportReconCSV(accountId){
+        const acc = getAccount(accountId);
+        const stmts = DB.reconciliations[accountId]||[];
+        const txns = getAccountTransactions(accountId);
+        const rows=[['Date','Description','Type','Amount','Matched To','Status','Difference']];
+        stmts.forEach(s=>{ const matched=s.matchedId?txns.find(t=>t.id===s.matchedId):null; const diff=matched?Math.abs(s.amount)-Math.abs(matched.net):null; rows.push([s.date,`"${s.description}"`,s.type,s.amount,matched?`"${matched.label}"`:'-',s.status,diff!==null?diff.toFixed(2):'-']); });
+        const csv=rows.map(r=>r.join(',')).join('\n');
+        const a=document.createElement('a');
+        a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+        a.download=`reconciliation-${acc.name.replace(/\s+/g,'-')}-${today()}.csv`;
+        a.click();
+        toast('CSV exported');
+      }
+
       // ── MODAL UTILS ──────────────────────────────────────────────
       function openModal(html) {
         document.getElementById("modal-inner").innerHTML = html;
@@ -5195,5 +5410,7 @@
         document.getElementById("l-user").focus();
       });
     </script>
+    <!-- RECONCILIATION: hidden statement file input -->
+    <input type="file" id="stmt-upload-input" accept=".csv,.txt,.xlsx,.xls" style="display:none" onchange="handleStatementUpload(this)">
   </body>
 </html>
