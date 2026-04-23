@@ -5586,6 +5586,41 @@
         return null;
       }
 
+      function reconHistoryHtml(accountId) {
+        const allFiles = (DB.reconFiles || []);
+        const history = allFiles.filter(f => f.done).slice().sort((a,b) => b.doneDate > a.doneDate ? 1 : -1);
+        if (history.length === 0) return '';
+        // Group by account
+        const byAccount = {};
+        history.forEach(f => {
+          const acc = getAccount(f.accountId);
+          const key = f.accountId;
+          if (!byAccount[key]) byAccount[key] = { acc, items: [] };
+          byAccount[key].items.push(f);
+        });
+        const rows = history.map(f => {
+          const acc = getAccount(f.accountId);
+          return `<tr>
+            <td class="text2" style="white-space:nowrap">${dateStr(f.doneDate)}</td>
+            <td style="font-weight:500">${acc.name || '—'}</td>
+            <td><span class="badge" style="background:rgba(26,158,158,.12);color:var(--accent)">${acc.currency || ''}</span></td>
+            <td style="font-size:12px">${f.filename}</td>
+            <td class="text2" style="white-space:nowrap">${dateStr(f.statementDate || f.uploadDate)}</td>
+            <td style="font-size:12px;max-width:220px;color:var(--text2)">${f.description || '—'}</td>
+            <td><span class="badge b-green">Done</span></td>
+          </tr>`;
+        }).join('');
+        return `<div class="card" style="margin-top:16px">
+          <div class="card-header">
+            <div class="card-title">Reconciliation History</div>
+            <span class="badge b-green">${history.length} reconciled</span>
+          </div>
+          <div class="tbl-wrap"><table>
+            <tr><th>Done Date</th><th>Account</th><th>Currency</th><th>File</th><th>Statement Date</th><th>Description</th><th>Status</th></tr>
+            ${rows}
+          </table></div>
+        </div>`;
+      }
       function reconciliationPage(){
         if(!DB.reconFiles) DB.reconFiles = [];
         if(!RECON_ACCOUNT_ID && DB.accounts.length) RECON_ACCOUNT_ID = DB.accounts[0].id;
@@ -5662,7 +5697,8 @@
               <div class="card-header"><div class="card-title">Uploaded statements</div><span class="badge b-gray">${files.length}</span></div>
               ${stmtHtml}
             </div>
-          </div>`;
+          </div>
+          ${reconHistoryHtml(RECON_ACCOUNT_ID)}`;
       }
 
       function getAccountTransactions(accountId){
@@ -5804,9 +5840,27 @@
       function markReconDone(fileId) {
         const f = (DB.reconFiles || []).find(x => x.id === fileId);
         if (!f) return;
-        f.done = true; f.doneDate = today();
-        logActivity('reconciliation', `Reconciliation marked done: ${f.filename}`);
-        saveDB(); renderCurrentPage();
+        const acc = getAccount(f.accountId);
+        openModal(`<div class="modal-title">Mark Reconciliation Done</div>
+  <div style="margin-bottom:12px;padding:10px 12px;background:var(--bg3);border-radius:8px;font-size:13px">
+    <div style="font-weight:500">${f.filename}</div>
+    <div class="text2" style="font-size:12px;margin-top:2px">${acc.name} · Statement date: ${dateStr(f.statementDate || f.uploadDate)}</div>
+  </div>
+  <div class="field"><label>Description / Notes</label><textarea id="recon-done-desc" rows="3" placeholder="e.g. All transactions matched, closing balance confirmed..." style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);resize:vertical;font-size:13px"></textarea></div>
+  <div class="field"><label>Reconciliation date</label><input id="recon-done-date" type="date" value="${today()}" style="width:100%"></div>
+  <div class="modal-actions">
+    <button class="btn" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-accent" onclick="confirmReconDone('${fileId}')">✓ Confirm Done</button>
+  </div>`);
+      }
+      function confirmReconDone(fileId) {
+        const f = (DB.reconFiles || []).find(x => x.id === fileId);
+        if (!f) return;
+        const desc = document.getElementById('recon-done-desc') ? document.getElementById('recon-done-desc').value.trim() : '';
+        const doneDate = document.getElementById('recon-done-date') ? document.getElementById('recon-done-date').value : today();
+        f.done = true; f.doneDate = doneDate; f.description = desc;
+        logActivity('reconciliation', `Reconciliation done: ${f.filename}${desc ? ' — ' + desc : ''}`);
+        saveDB(); closeModal(); renderCurrentPage();
         toast('Reconciliation marked as done');
       }
       function deleteReconFile(fileId) {
