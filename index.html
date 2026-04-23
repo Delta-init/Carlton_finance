@@ -1205,6 +1205,12 @@
             <rect x="9" y="9" width="5" height="5" rx="1" /></svg
           >Programs
         </div>
+        <div class="nav-item" id="nav-quotations" onclick="nav('quotations', this)">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M4 2h8a1 1 0 011 1v11l-2-1-2 1-2-1-2 1V3a1 1 0 011-1z"/>
+            <path d="M6 5h4M6 8h4M6 11h2"/>
+          </svg>Quotations
+        </div>
         <div class="nav-item" id="nav-payments" onclick="nav('payments', this)">
           <svg
             width="14"
@@ -1645,7 +1651,11 @@
       function loadDB() {
         try {
           const d = localStorage.getItem(DB_KEY);
-          if (d) return JSON.parse(d);
+          if (d) {
+            const db = JSON.parse(d);
+            if (!db.quotations) db.quotations = [];
+            return db;
+          }
         } catch (e) {}
         return defaultDB();
       }
@@ -1778,6 +1788,7 @@
               status: "active",
             },
           ],
+          quotations: [],
           payments: [
             {
               id: "p1",
@@ -2239,6 +2250,7 @@
         transfers: "+ New transfer",
         students: "+ Add student",
         programs: "+ Add program",
+        quotations: "+ New quotation",
         payments: "+ Record payment",
         expenses: "+ Add expense",
         payroll: "+ Add staff",
@@ -2288,6 +2300,7 @@
           transfers: () => openModal(modalAddTransfer()),
           students: () => openModal(modalAddStudent()),
           programs: () => openModal(modalAddProgram()),
+          quotations: () => openModal(modalAddQuotation()),
           payments: () => { openModal(modalAddPayment()); updatePaySummary(); },
           expenses: () => openModal(modalAddExpense()),
           payroll: () => openModal(modalAddStaff()),
@@ -2304,6 +2317,7 @@
           fx,
           students,
           programs: programsPage,
+          quotations: quotationsPage,
           payments,
           expenses,
           payroll,
@@ -2676,6 +2690,142 @@
     </table></div>`
     }
   </div>`;
+      }
+
+      function nextQuotationNo() {
+        const year = new Date().getFullYear();
+        const count = (DB.quotations || []).filter(q => q.quotationNo && q.quotationNo.startsWith(`QUO-${year}-`)).length + 1;
+        return `QUO-${year}-${String(count).padStart(4, "0")}`;
+      }
+      function quotationsPage() {
+        const canCreate = perm("canCreate"), canEdit = perm("canEdit");
+        const qs = (DB.quotations || []).slice().sort((a, b) => b.date > a.date ? 1 : -1);
+        const statusColor = { draft: "var(--text3)", sent: "var(--accent)", accepted: "var(--green)", converted: "var(--text3)", cancelled: "var(--red)" };
+        const statusBadge = { draft: "b-gray", sent: "b-blue", accepted: "b-green", converted: "b-gray", cancelled: "b-red" };
+        return `<div class="card">
+  <div class="card-header">
+    <div class="card-title">Quotations</div>
+  </div>
+  ${qs.length === 0
+    ? `<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">No quotations yet</div>${canCreate ? `<button class="btn btn-accent" onclick="openModal(modalAddQuotation())">Create first quotation</button>` : ""}</div>`
+    : `<div class="tbl-wrap"><table>
+  <tr><th>No.</th><th>Student</th><th>Program</th><th>Amount</th><th>Date</th><th>Valid Until</th><th>Status</th><th></th></tr>
+  ${qs.map(q => {
+    const st = q.studentId ? getStudent(q.studentId) : null;
+    const name = st ? st.name : (q.studentName || "—");
+    return `<tr>
+      <td class="mono" style="font-size:12px">${q.quotationNo}</td>
+      <td style="font-weight:500">${name}</td>
+      <td class="text2">${q.program || "—"}</td>
+      <td class="mono">${fmtOrig(q.amount, q.currency)}</td>
+      <td class="text2">${dateStr(q.date)}</td>
+      <td class="text2" style="color:${q.validUntil && q.validUntil < today() && q.status !== "converted" && q.status !== "cancelled" ? "var(--red)" : "inherit"}">${dateStr(q.validUntil)}</td>
+      <td><span class="badge ${statusBadge[q.status] || "b-gray"}">${q.status}</span></td>
+      <td class="fl" style="gap:4px;justify-content:flex-end">
+        ${canEdit && q.status === "draft" ? `<button class="btn btn-sm" onclick="setQuotationStatus('${q.id}','sent')">Mark Sent</button>` : ""}
+        ${canEdit && q.status === "sent" ? `<button class="btn btn-sm" onclick="setQuotationStatus('${q.id}','accepted')">Accept</button>` : ""}
+        ${canCreate && (q.status === "accepted" || q.status === "sent") ? `<button class="btn btn-sm btn-accent" onclick="convertQuotation('${q.id}')">Convert to Payment</button>` : ""}
+        ${canEdit && q.status !== "converted" && q.status !== "cancelled" ? `<button class="btn btn-sm" onclick="openModal(modalAddQuotation('${q.id}'))">Edit</button>` : ""}
+        ${canEdit && q.status !== "converted" && q.status !== "cancelled" ? `<button class="btn btn-sm" style="color:var(--red)" onclick="setQuotationStatus('${q.id}','cancelled')">Cancel</button>` : ""}
+      </td>
+    </tr>`;
+  }).join("")}
+  </table></div>`}
+</div>`;
+      }
+      function modalAddQuotation(id) {
+        const q = id ? (DB.quotations || []).find(x => x.id === id) : null;
+        const validDefault = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+        return `<div class="modal-title">${q ? "Edit quotation" : "New quotation"}</div>
+  <div class="form-row2 form-row2-wrap">
+    <div class="field" style="position:relative">
+      <label>Student</label>
+      <input id="qf-sid-search" placeholder="Search student..." autocomplete="off"
+        value="${q ? (q.studentId ? (getStudent(q.studentId).name || q.studentName || "") : (q.studentName || "")) : ""}"
+        oninput="filterQuotStudents()" onfocus="filterQuotStudents()"
+        onblur="setTimeout(hideQuotStudents,200)" style="width:100%">
+      <input type="hidden" id="qf-sid" value="${q ? (q.studentId || "") : ""}">
+      <div id="quot-student-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg2);border:1px solid var(--border);border-radius:8px;z-index:300;max-height:200px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.25);margin-top:2px"></div>
+    </div>
+    <div class="field"><label>Program</label><select id="qf-prog">${programOptions(q ? q.program : "")}</select></div>
+  </div>
+  <div class="form-row2 form-row2-wrap">
+    <div class="field"><label>Amount</label><input id="qf-amt" type="number" value="${q ? q.amount : 0}" oninput="autoFillQuotFee()"></div>
+    <div class="field"><label>Currency</label><select id="qf-cur">${curOptions(q ? q.currency : "AED")}</select></div>
+  </div>
+  <div class="form-row2 form-row2-wrap">
+    <div class="field"><label>Quotation date</label><input id="qf-date" type="date" value="${q ? q.date : today()}"></div>
+    <div class="field"><label>Valid until</label><input id="qf-valid" type="date" value="${q ? q.validUntil : validDefault}"></div>
+  </div>
+  <div class="field"><label>Notes</label><textarea id="qf-notes" rows="2" placeholder="Terms, conditions, notes..." style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);resize:vertical;font-size:13px">${q ? (q.notes || "") : ""}</textarea></div>
+  <div class="modal-actions">
+    <button class="btn" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-accent" onclick="saveQuotation('${q ? q.id : ""}')">${q ? "Save" : "Create quotation"}</button>
+  </div>`;
+      }
+      function filterQuotStudents() {
+        const q = (document.getElementById("qf-sid-search").value || "").toLowerCase();
+        const dd = document.getElementById("quot-student-dd");
+        if (!dd) return;
+        const matches = DB.students.filter(s => s.name.toLowerCase().includes(q));
+        dd.innerHTML = matches.length
+          ? matches.map(s => `<div style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px" onmousedown="selectQuotStudent('${s.id}','${s.name.replace(/'/g,"&#39;")}','${s.program||""}',${s.feeAmount||0},'${s.feeCurrency||"AED"}')">${s.name}${s.program ? ` <span style="color:var(--text3);font-size:11px;margin-left:6px">${s.program}</span>` : ""}</div>`).join("")
+          : `<div style="padding:9px 12px;color:var(--text3);font-size:13px">No students found</div>`;
+        dd.style.display = "block";
+      }
+      function hideQuotStudents() {
+        const dd = document.getElementById("quot-student-dd");
+        if (dd) dd.style.display = "none";
+      }
+      function selectQuotStudent(id, name, program, fee, cur) {
+        document.getElementById("qf-sid").value = id;
+        document.getElementById("qf-sid-search").value = name;
+        hideQuotStudents();
+        const pe = document.getElementById("qf-prog");
+        const ae = document.getElementById("qf-amt");
+        const ce = document.getElementById("qf-cur");
+        if (pe && program) pe.value = program;
+        if (ae && fee) ae.value = fee;
+        if (ce && cur) ce.value = cur;
+      }
+      function autoFillQuotFee() {}
+      function saveQuotation(id) {
+        const studentId = v("qf-sid");
+        const studentName = document.getElementById("qf-sid-search") ? document.getElementById("qf-sid-search").value : "";
+        const program = v("qf-prog");
+        const amount = parseFloat(v("qf-amt")) || 0;
+        const currency = v("qf-cur");
+        const date = v("qf-date");
+        const validUntil = v("qf-valid");
+        const notes = document.getElementById("qf-notes") ? document.getElementById("qf-notes").value : "";
+        if (!studentName && !studentId) { toast("Student name required", "amber"); return; }
+        if (!amount) { toast("Amount required", "amber"); return; }
+        if (!DB.quotations) DB.quotations = [];
+        if (id) {
+          const q = DB.quotations.find(x => x.id === id);
+          if (q) Object.assign(q, { studentId, studentName, program, amount, currency, date, validUntil, notes });
+        } else {
+          DB.quotations.push({ id: uid(), quotationNo: nextQuotationNo(), studentId, studentName, program, amount, currency, date, validUntil, notes, status: "draft", paymentId: null });
+        }
+        logActivity("quotation", `${id ? "Updated" : "Created"} quotation for ${studentName}`);
+        saveDB(); closeModal(); renderCurrentPage();
+        toast(id ? "Quotation updated" : "Quotation created");
+      }
+      function setQuotationStatus(id, status) {
+        const q = (DB.quotations || []).find(x => x.id === id);
+        if (!q) return;
+        q.status = status;
+        logActivity("quotation", `Quotation ${q.quotationNo} marked ${status}`);
+        saveDB(); renderCurrentPage();
+        toast(`Quotation ${status}`);
+      }
+      function convertQuotation(id) {
+        const q = (DB.quotations || []).find(x => x.id === id);
+        if (!q) return;
+        window._convertingQuotationId = id;
+        const sid = q.studentId || null;
+        openModal(modalAddPayment(sid, q));
+        updatePaySummary();
       }
 
       // ── PAGE: PAYMENTS ───────────────────────────────────────────
@@ -4194,12 +4344,13 @@
         renderCurrentPage();
         toast(id ? "Student updated" : "Student added");
       }
-      function modalAddPayment(preStudentId) {
+      function modalAddPayment(preStudentId, preQuotation) {
         // Pick the effective initial student so Program/Amount/Currency
         // are pre-filled to match whatever the <select> visually shows.
         const active = DB.students.filter((x) => x.status === "active");
         const initialId = preStudentId || (active[0] && active[0].id) || (DB.students[0] && DB.students[0].id);
         const s = initialId ? getStudent(initialId) : null;
+        const q = preQuotation || null;
         return `<div class="modal-title">Record payment</div>
   <div class="form-row2 form-row2-wrap">
     <div class="field" style="position:relative">
@@ -4215,8 +4366,8 @@
     <div class="field"><label>Program</label><select id="f-prog">${programOptions(s ? s.program : "")}</select></div>
   </div>
   <div class="form-row2 form-row2-wrap">
-    <div class="field"><label>Amount</label><input id="f-amt" type="number" value="${s ? s.feeAmount : 0}" oninput="updateHint('pay-hint','f-amt','f-cur');updatePaySummary()"></div>
-    <div class="field"><label>Currency</label><select id="f-cur" onchange="updateHint('pay-hint','f-amt','f-cur');updatePaySummary()">${curOptions(s ? s.feeCurrency : "AED")}</select></div>
+    <div class="field"><label>Amount</label><input id="f-amt" type="number" value="${q ? q.amount : (s ? s.feeAmount : 0)}" oninput="updateHint('pay-hint','f-amt','f-cur');updatePaySummary()"></div>
+    <div class="field"><label>Currency</label><select id="f-cur" onchange="updateHint('pay-hint','f-amt','f-cur');updatePaySummary()">${curOptions(q ? q.currency : (s ? s.feeCurrency : "AED"))}</select></div>
   </div>
   <div class="converted-hint" id="pay-hint"></div>
   <div id="pay-summary"></div>
@@ -4314,6 +4465,11 @@
           proof,
           invoice: false,
         });
+        if (window._convertingQuotationId) {
+          const cq = (DB.quotations || []).find(x => x.id === window._convertingQuotationId);
+          if (cq) { cq.status = "converted"; cq.paymentId = DB.payments[DB.payments.length - 1].id; }
+          window._convertingQuotationId = null;
+        }
         const st = getStudent(studentId);
         logActivity(
           "payment",
