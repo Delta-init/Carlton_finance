@@ -5594,70 +5594,134 @@
 
       let _rhFilters = { dateFrom: '', dateTo: '', accountId: '', status: '' };
       function reconHistoryFullPage() {
-        const f = _rhFilters;
-        const accountOptions = `<option value="">All accounts</option>` + DB.accounts.map(a => `<option value="${a.id}"${f.accountId===a.id?' selected':''}>${a.name} (${a.currency})</option>`).join('');
-        let files = (DB.reconFiles || []).slice();
-        if (f.accountId) files = files.filter(x => x.accountId === f.accountId);
-        if (f.dateFrom) files = files.filter(x => (x.statementDate || x.uploadDate) >= f.dateFrom);
-        if (f.dateTo)   files = files.filter(x => (x.statementDate || x.uploadDate) <= f.dateTo);
-        if (f.status === 'done')    files = files.filter(x => x.done);
-        if (f.status === 'pending') files = files.filter(x => !x.done);
-        files.sort((a, b) => (b.statementDate || b.uploadDate) > (a.statementDate || a.uploadDate) ? 1 : -1);
+        const fl = _rhFilters;
+        const accountOptions = `<option value="">All accounts</option>` + DB.accounts.map(a => `<option value="${a.id}"${fl.accountId===a.id?' selected':''}>${a.name} (${a.currency})</option>`).join('');
 
-        const byDate = {};
-        files.forEach(x => { const d = x.statementDate || x.uploadDate; if (!byDate[d]) byDate[d] = []; byDate[d].push(x); });
-        const dates = Object.keys(byDate).sort().reverse();
+        // Collect all transactions from all accounts grouped by date+account
+        const reconFiles = DB.reconFiles || [];
+        // Build a lookup: accountId → array of reconFiles for quick recon status check
+        const reconByAccDate = {}; // key: accId+'|'+date → best matching recon file
+        reconFiles.forEach(rf => {
+          const d = rf.statementDate || rf.uploadDate;
+          const key = rf.accountId + '|' + d;
+          // prefer done over pending
+          if (!reconByAccDate[key] || (!reconByAccDate[key].done && rf.done)) reconByAccDate[key] = rf;
+        });
 
-        const blocksHtml = dates.length === 0
-          ? `<div class="empty"><div class="empty-icon">🕐</div><div class="empty-text">No records match the filters</div></div>`
-          : dates.map(date => {
-              const items = byDate[date];
+        // Get transactions per account
+        const txnsByDate = {}; // date → { accId: { acc, txns[] } }
+        DB.accounts.forEach(acc => {
+          const txns = getAccountTransactions(acc.id);
+          txns.forEach(t => {
+            if (!txnsByDate[t.date]) txnsByDate[t.date] = {};
+            if (!txnsByDate[t.date][acc.id]) txnsByDate[t.date][acc.id] = { acc, txns: [] };
+            txnsByDate[t.date][acc.id].txns.push(t);
+          });
+        });
+
+        // Also include dates that only have recon files (no transactions recorded)
+        reconFiles.forEach(rf => {
+          const d = rf.statementDate || rf.uploadDate;
+          if (!txnsByDate[d]) txnsByDate[d] = {};
+          if (!txnsByDate[d][rf.accountId]) txnsByDate[d][rf.accountId] = { acc: getAccount(rf.accountId), txns: [] };
+        });
+
+        let allDates = Object.keys(txnsByDate).sort().reverse();
+
+        // Apply filters
+        if (fl.dateFrom) allDates = allDates.filter(d => d >= fl.dateFrom);
+        if (fl.dateTo)   allDates = allDates.filter(d => d <= fl.dateTo);
+        if (fl.accountId) {
+          allDates = allDates.filter(d => txnsByDate[d][fl.accountId]);
+        }
+        if (fl.status) {
+          allDates = allDates.filter(d => {
+            const accIds = fl.accountId ? [fl.accountId] : Object.keys(txnsByDate[d]);
+            return accIds.some(aid => {
+              const rf = reconByAccDate[aid+'|'+d];
+              if (fl.status === 'done') return rf && rf.done;
+              if (fl.status === 'pending') return !rf || !rf.done;
+              return true;
+            });
+          });
+        }
+
+        let totalDone = 0, totalPending = 0;
+        const blocksHtml = allDates.length === 0
+          ? `<div class="empty"><div class="empty-icon">🕐</div><div class="empty-text">No transactions found for the selected filters</div></div>`
+          : allDates.map(date => {
+              const accsOnDate = fl.accountId
+                ? (txnsByDate[date][fl.accountId] ? { [fl.accountId]: txnsByDate[date][fl.accountId] } : {})
+                : txnsByDate[date];
+              const accIds = Object.keys(accsOnDate);
+              const rowsHtml = accIds.map(aid => {
+                const { acc, txns } = accsOnDate[aid];
+                const rf = reconByAccDate[aid+'|'+date];
+                const reconDone = rf && rf.done;
+                const reconPending = rf && !rf.done;
+                if (fl.status === 'done' && !reconDone) return '';
+                if (fl.status === 'pending' && reconDone) return '';
+                if (reconDone) totalDone++; else totalPending++;
+                const statusBadge = reconDone
+                  ? `<span class="badge b-green">Reconciled</span>`
+                  : reconPending
+                    ? `<span class="badge b-amber">Pending</span>`
+                    : `<span class="badge" style="background:var(--bg3);color:var(--text3)">No statement</span>`;
+                const txnRows = txns.length === 0
+                  ? `<tr><td colspan="3" class="text3" style="font-size:12px;padding:6px">No transactions recorded</td></tr>`
+                  : txns.map(t => `<tr>
+                      <td>${t.typeBadge}</td>
+                      <td style="font-size:12px;color:var(--text2)">${t.label}</td>
+                      <td style="text-align:right" class="mono ${t.net>=0?'green':'red'}">${t.net>=0?'+':''}${fmtOrig(Math.abs(t.net),acc.currency)}</td>
+                    </tr>`).join('');
+                return `<tr style="vertical-align:top;border-top:1px solid var(--border)">
+                  <td style="padding:10px 8px;white-space:nowrap">
+                    <div style="font-weight:600;font-size:13px">${acc.name}</div>
+                    <span class="badge" style="background:rgba(26,158,158,.1);color:var(--accent);margin-top:4px;display:inline-block">${acc.currency}</span>
+                  </td>
+                  <td style="padding:8px">
+                    <table style="width:100%">
+                      <tr><th>Type</th><th>Description</th><th style="text-align:right">Amount</th></tr>
+                      ${txnRows}
+                    </table>
+                  </td>
+                  <td style="padding:10px 8px;white-space:nowrap;text-align:center">
+                    ${statusBadge}
+                    ${reconDone ? `<div style="font-size:11px;color:var(--text3);margin-top:4px">${dateStr(rf.doneDate)}</div>` : ''}
+                    ${rf && rf.description ? `<div style="font-size:11px;color:var(--text3);margin-top:2px;max-width:120px;text-align:left">${rf.description}</div>` : ''}
+                  </td>
+                </tr>`;
+              }).join('');
+              if (!rowsHtml.trim()) return '';
               return `<div class="card" style="margin-bottom:12px">
-                <div class="card-header">
-                  <div class="card-title">${dateStr(date)}</div>
-                  <div style="display:flex;gap:6px">
-                    <span class="badge b-green">${items.filter(x=>x.done).length} done</span>
-                    ${items.filter(x=>!x.done).length ? `<span class="badge b-amber">${items.filter(x=>!x.done).length} pending</span>` : ''}
-                  </div>
-                </div>
-                <div class="tbl-wrap"><table>
-                  <tr><th>Account</th><th>File</th><th>Status</th><th>Done Date</th><th>Description</th></tr>
-                  ${items.map(x => {
-                    const acc = getAccount(x.accountId);
-                    return `<tr>
-                      <td><span style="font-weight:500">${acc.name||'—'}</span> <span class="badge" style="background:rgba(26,158,158,.1);color:var(--accent);margin-left:4px">${acc.currency||''}</span></td>
-                      <td style="font-size:12px;color:var(--text2)">${x.filename}</td>
-                      <td>${x.done ? `<span class="badge b-green">Done</span>` : `<span class="badge b-amber">Pending</span>`}</td>
-                      <td class="text2" style="white-space:nowrap">${x.done ? dateStr(x.doneDate) : '—'}</td>
-                      <td style="font-size:12px;color:var(--text2);max-width:260px">${x.description||'—'}</td>
-                    </tr>`;
-                  }).join('')}
-                </table></div>
+                <div class="card-header"><div class="card-title">${dateStr(date)}</div></div>
+                <table style="width:100%;border-collapse:collapse">
+                  <tr style="background:var(--bg3)"><th style="padding:6px 8px;text-align:left">Account</th><th style="padding:6px 8px;text-align:left">Transactions</th><th style="padding:6px 8px;text-align:center">Recon Status</th></tr>
+                  ${rowsHtml}
+                </table>
               </div>`;
-            }).join('');
+            }).filter(Boolean).join('');
 
-        const totalDone = files.filter(x=>x.done).length;
-        const totalPending = files.filter(x=>!x.done).length;
         return `
         <div class="card" style="margin-bottom:12px">
           <div class="card-header"><div class="card-title">Filters</div>
-            ${(f.dateFrom||f.dateTo||f.accountId||f.status)?`<button class="btn btn-sm" onclick="_rhFilters={dateFrom:'',dateTo:'',accountId:'',status:''};renderCurrentPage()">Clear filters</button>`:''}
+            ${(fl.dateFrom||fl.dateTo||fl.accountId||fl.status)?`<button class="btn btn-sm" onclick="_rhFilters={dateFrom:'',dateTo:'',accountId:'',status:''};renderCurrentPage()">Clear filters</button>`:''}
           </div>
           <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;padding:4px 0 8px">
-            <div class="field" style="margin:0;min-width:130px"><label>From date</label><input type="date" value="${f.dateFrom}" onchange="_rhFilters.dateFrom=this.value;renderCurrentPage()" style="width:100%"></div>
-            <div class="field" style="margin:0;min-width:130px"><label>To date</label><input type="date" value="${f.dateTo}" onchange="_rhFilters.dateTo=this.value;renderCurrentPage()" style="width:100%"></div>
+            <div class="field" style="margin:0;min-width:130px"><label>From date</label><input type="date" value="${fl.dateFrom}" onchange="_rhFilters.dateFrom=this.value;renderCurrentPage()" style="width:100%"></div>
+            <div class="field" style="margin:0;min-width:130px"><label>To date</label><input type="date" value="${fl.dateTo}" onchange="_rhFilters.dateTo=this.value;renderCurrentPage()" style="width:100%"></div>
             <div class="field" style="margin:0;min-width:160px"><label>Account</label><select onchange="_rhFilters.accountId=this.value;renderCurrentPage()" style="width:100%">${accountOptions}</select></div>
             <div class="field" style="margin:0;min-width:120px"><label>Status</label><select onchange="_rhFilters.status=this.value;renderCurrentPage()" style="width:100%">
-              <option value=""${!f.status?' selected':''}>All</option>
-              <option value="done"${f.status==='done'?' selected':''}>Done</option>
-              <option value="pending"${f.status==='pending'?' selected':''}>Pending</option>
+              <option value=""${!fl.status?' selected':''}>All</option>
+              <option value="done"${fl.status==='done'?' selected':''}>Reconciled</option>
+              <option value="pending"${fl.status==='pending'?' selected':''}>Pending / No statement</option>
             </select></div>
           </div>
         </div>
         <div class="metrics m3" style="margin-bottom:16px">
-          <div class="metric"><div class="metric-label">Shown</div><div class="metric-value">${files.length}</div></div>
+          <div class="metric"><div class="metric-label">Dates shown</div><div class="metric-value">${allDates.length}</div></div>
           <div class="metric"><div class="metric-label">Reconciled</div><div class="metric-value green">${totalDone}</div></div>
-          <div class="metric"><div class="metric-label">Pending</div><div class="metric-value ${totalPending>0?'red':'text3'}">${totalPending}</div></div>
+          <div class="metric"><div class="metric-label">Pending / No statement</div><div class="metric-value ${totalPending>0?'red':'text3'}">${totalPending}</div></div>
         </div>
         ${blocksHtml}`;
       }
