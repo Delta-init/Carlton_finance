@@ -5587,88 +5587,46 @@
       }
 
       function reconciliationPage(){
-        if(!DB.reconciliations) DB.reconciliations = {};
-        // Migrate legacy flat-array storage to per-day bucket shape.
-        Object.keys(DB.reconciliations).forEach(accId=>{
-          if(Array.isArray(DB.reconciliations[accId])) delete DB.reconciliations[accId];
-        });
+        if(!DB.reconFiles) DB.reconFiles = [];
         if(!RECON_ACCOUNT_ID && DB.accounts.length) RECON_ACCOUNT_ID = DB.accounts[0].id;
         if(DB.accounts.length===0) return `<div class="empty"><div class="empty-text">No treasury accounts yet — add one first</div></div>`;
         const canEdit = perm('canEdit') || perm('canCreate');
         const tabsHtml = DB.accounts.map(a=>{
-          const bucketed = DB.reconciliations[a.id] || {};
-          const dayCount = Object.keys(bucketed).length;
+          const fileCount = DB.reconFiles.filter(f=>f.accountId===a.id).length;
           const isActive = a.id === RECON_ACCOUNT_ID;
-          return `<button class="recon-tab${isActive?' active':''}" onclick="setReconAccount('${a.id}')" title="${a.name}">${a.name}<br><span style="font-size:9px;opacity:.7">${a.currency}${dayCount?' · '+dayCount+' day'+(dayCount>1?'s':''):''}</span></button>`;
+          return `<button class="recon-tab${isActive?' active':''}" onclick="setReconAccount('${a.id}')" title="${a.name}">${a.name}<br><span style="font-size:9px;opacity:.7">${a.currency}${fileCount?' · '+fileCount+' file'+(fileCount>1?'s':''):''}</span></button>`;
         }).join('');
         const acc = getAccount(RECON_ACCOUNT_ID);
-        const allStmts = getAllStmtRows(RECON_ACCOUNT_ID);
-        const matched   = allStmts.filter(s=>s.status==='matched').length;
-        const unmatched = allStmts.filter(s=>s.status==='unmatched' || s.status==='pending').length;
-        const ignored   = allStmts.filter(s=>s.status==='ignored').length;
-        const stmtBalance = allStmts.reduce((sum,s)=>sum+(s.type==='credit'?s.amount:-s.amount),0);
-        const internalTxns = getAccountTransactions(RECON_ACCOUNT_ID);
-        const internalBalance = internalTxns.reduce((sum,t)=>sum+t.net,0);
-        const diff = stmtBalance - internalBalance;
-        // Build per-date blocks: each date that has internal txns OR uploaded statement rows.
-        const txnByDate = {};
-        internalTxns.forEach(t=>{ if(!txnByDate[t.date]) txnByDate[t.date]=[]; txnByDate[t.date].push(t); });
-        const stmtBuckets = DB.reconciliations[RECON_ACCOUNT_ID] || {};
-        const allDates = Array.from(new Set([...Object.keys(txnByDate), ...Object.keys(stmtBuckets)])).sort().reverse();
-        const blocksHtml = allDates.length === 0
-          ? `<div class="upload-zone" onclick="triggerStatementUpload()"><div class="uz-icon">📄</div><div class="uz-title">No transactions or uploaded statements yet</div><div class="uz-sub">CSV · TXT · Excel supported — drag & drop or click to browse</div></div>`
-          : allDates.map(date=>{
-            const dayTxns = txnByDate[date] || [];
-            const dayStmts = stmtBuckets[date] || [];
-            return `<div class="card" style="margin-bottom:12px">
-              <div class="card-header">
-                <div class="card-title">${dateStr(date)}</div>
-                <button class="btn btn-sm" onclick="triggerStatementUpload('${date}')">↑ Upload for this day</button>
-              </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-                <div>
-                  <div style="font-size:11px;color:var(--text3);font-family:var(--mono);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Internal transactions · ${dayTxns.length}</div>
-                  ${dayTxns.length===0
-                    ? `<div class="text3" style="font-size:11px;padding:10px 0">No internal transactions this day</div>`
-                    : `<div class="tbl-wrap"><table><tr><th>Type</th><th>Description</th><th style="text-align:right">Net</th></tr>${dayTxns.map(t=>`<tr><td>${t.typeBadge}</td><td style="font-size:11px;max-width:220px">${t.label}</td><td style="text-align:right" class="mono ${t.net>=0?'green':'red'}">${t.net>=0?'+':''}${fmtOrig(t.net,acc.currency)}</td></tr>`).join('')}</table></div>`}
-                </div>
-                <div>
-                  <div style="font-size:11px;color:var(--text3);font-family:var(--mono);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Statement rows · ${dayStmts.length}</div>
-                  ${dayStmts.length===0
-                    ? `<div class="text3" style="font-size:11px;padding:10px 0">No statement rows uploaded for this day</div>`
-                    : `<div class="tbl-wrap"><table><tr><th>Description</th><th style="text-align:right">Amount</th><th>Match</th><th>Status</th><th></th></tr>${dayStmts.map(s=>{
-                      const matchedTxn = s.matchedId ? internalTxns.find(t=>t.id===s.matchedId) : null;
-                      return `<tr>
-                        <td style="font-size:11px;max-width:180px">${s.description}</td>
-                        <td style="text-align:right" class="mono ${s.type==='credit'?'green':'red'}">${s.type==='credit'?'+':'−'}${fmtOrig(s.amount,acc.currency)}</td>
-                        <td style="font-size:11px">${matchedTxn
-                          ? `<span class="text2" style="font-size:10px">${matchedTxn.label.length>36?matchedTxn.label.substring(0,36)+'…':matchedTxn.label}</span>`
-                          : (s.status==='ignored'?`<span class="text3">—</span>`:`<button class="btn btn-sm" onclick="openModal(modalMatchTxn('${RECON_ACCOUNT_ID}','${s.id}'))">Match</button>`)}</td>
-                        <td><span class="recon-status rs-${s.status}">${s.status}</span></td>
-                        <td style="white-space:nowrap">${s.status!=='ignored'&&canEdit?`<button class="btn btn-sm btn-ghost" title="Ignore" onclick="ignoreReconRow('${RECON_ACCOUNT_ID}','${s.id}')">✕</button>`:''}${s.status==='matched'&&canEdit?`<button class="btn btn-sm btn-ghost" title="Unmatch" onclick="unmatchReconRow('${RECON_ACCOUNT_ID}','${s.id}')">↩</button>`:''}${canEdit?`<button class="btn btn-sm btn-danger" onclick="deleteReconRow('${RECON_ACCOUNT_ID}','${s.id}')">Del</button>`:''}</td>
-                      </tr>`;
-                    }).join('')}</table></div>`}
-                </div>
-              </div>
-            </div>`;
-          }).join('');
-
+        const files = DB.reconFiles.filter(f=>f.accountId===RECON_ACCOUNT_ID).slice().sort((a,b)=>b.uploadDate>a.uploadDate?1:-1);
+        const doneCount = files.filter(f=>f.done).length;
+        const pendingCount = files.filter(f=>!f.done).length;
+        const filesHtml = files.length === 0
+          ? `<div class="upload-zone" onclick="triggerStatementUpload()"><div class="uz-icon">📄</div><div class="uz-title">No statements uploaded yet</div><div class="uz-sub">Click to upload a bank statement</div></div>`
+          : `<div class="tbl-wrap"><table>
+              <tr><th>File name</th><th>Upload date</th><th>Status</th><th></th></tr>
+              ${files.map(f=>`<tr>
+                <td style="font-weight:500">${f.filename}</td>
+                <td class="text2">${dateStr(f.uploadDate)}</td>
+                <td>${f.done
+                  ? `<span class="badge b-green">Done · ${dateStr(f.doneDate)}</span>`
+                  : `<span class="badge b-amber">Pending</span>`}</td>
+                <td class="fl" style="gap:4px;justify-content:flex-end">
+                  ${!f.done && canEdit ? `<button class="btn btn-sm btn-accent" onclick="markReconDone('${f.id}')">✓ Reconciliation Done</button>` : ''}
+                  ${canEdit ? `<button class="btn btn-sm" style="color:var(--red)" onclick="deleteReconFile('${f.id}')">Remove</button>` : ''}
+                </td>
+              </tr>`).join('')}
+            </table></div>`;
         return `<div class="recon-tabs">${tabsHtml}</div>
           <div class="recon-summary-bar">
             <div class="recon-stat"><div class="rs-lbl">Account</div><div class="rs-val" style="font-size:14px;color:var(--text)">${acc.name}</div></div>
-            <div class="recon-stat"><div class="rs-lbl">Days with data</div><div class="rs-val">${allDates.length}</div></div>
-            <div class="recon-stat"><div class="rs-lbl">Matched</div><div class="rs-val green">${matched}</div></div>
-            <div class="recon-stat"><div class="rs-lbl">Unmatched</div><div class="rs-val ${unmatched>0?'red':'text3'}">${unmatched}</div></div>
-            <div class="recon-stat"><div class="rs-lbl">Ignored</div><div class="rs-val text3">${ignored}</div></div>
-            <div class="recon-stat"><div class="rs-lbl">Statement bal</div><div class="rs-val mono" style="font-size:14px">${fmtOrig(stmtBalance,acc.currency)}</div></div>
-            <div class="recon-stat"><div class="rs-lbl">Internal bal</div><div class="rs-val mono" style="font-size:14px">${fmtOrig(internalBalance,acc.currency)}</div></div>
-            <div class="recon-stat" style="border-color:${Math.abs(diff)<0.01?'var(--green)':'var(--red)'}"><div class="rs-lbl">Difference</div><div class="rs-val mono ${Math.abs(diff)<0.01?'green':'red'}" style="font-size:14px">${Math.abs(diff)<0.01?'✓ Balanced':(diff>0?'+':'')+fmtOrig(diff,acc.currency)}</div></div>
+            <div class="recon-stat"><div class="rs-lbl">Total uploaded</div><div class="rs-val">${files.length}</div></div>
+            <div class="recon-stat"><div class="rs-lbl">Reconciled</div><div class="rs-val green">${doneCount}</div></div>
+            <div class="recon-stat"><div class="rs-lbl">Pending</div><div class="rs-val ${pendingCount>0?'red':'text3'}">${pendingCount}</div></div>
           </div>
           <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-            <button class="btn btn-sm" onclick="triggerStatementUpload()">↑ Upload statement (any day)</button>
-            ${allStmts.length?`<button class="btn btn-sm" onclick="exportReconCSV('${RECON_ACCOUNT_ID}')">↓ Export CSV</button>`:''}
+            <button class="btn btn-sm" onclick="triggerStatementUpload()">↑ Upload statement</button>
           </div>
-          ${blocksHtml}`;
+          ${filesHtml}`;
       }
 
       function getAccountTransactions(accountId){
@@ -5692,29 +5650,24 @@
       function handleStatementUpload(input){
         const file = input.files[0];
         if(!file) return;
-        const reader = new FileReader();
-        reader.onload = function(e){
-          const rows = parseStatementCSV(e.target.result, file.name);
-          if(!rows || rows.length===0){ toast('No transactions found — check format','amber'); return; }
-          if(!DB.reconciliations) DB.reconciliations={};
-          if(!DB.reconciliations[RECON_ACCOUNT_ID] || Array.isArray(DB.reconciliations[RECON_ACCOUNT_ID])) DB.reconciliations[RECON_ACCOUNT_ID]={};
-          const bucketed = DB.reconciliations[RECON_ACCOUNT_ID];
-          const today_str = today();
-          const forcedDate = _pendingUploadDate; // if truthy, ALL rows land under this date
-          let added=0, skipped=0;
-          rows.forEach(row=>{
-            const rowDate = forcedDate || row.date;
-            if(!bucketed[rowDate]) bucketed[rowDate]=[];
-            const dup = bucketed[rowDate].find(s=>s.description===row.description && Math.abs(s.amount-row.amount)<0.01);
-            if(dup){ skipped++; return; }
-            bucketed[rowDate].push({id:uid(), date:rowDate, description:row.description, amount:row.amount, type:row.type, status:'pending', matchedId:null, uploadDate:today_str});
-            added++;
-          });
-          _pendingUploadDate = null;
-          saveDB(); renderCurrentPage();
-          toast(`Imported ${added} rows${skipped?' ('+skipped+' dup skipped)':''}`);
-        };
-        reader.readAsText(file);
+        if(!DB.reconFiles) DB.reconFiles = [];
+        DB.reconFiles.push({ id: uid(), accountId: RECON_ACCOUNT_ID, filename: file.name, size: file.size, uploadDate: today(), done: false, doneDate: null });
+        _pendingUploadDate = null;
+        saveDB(); renderCurrentPage();
+        toast(`Statement "${file.name}" uploaded`);
+      }
+      function markReconDone(fileId) {
+        const f = (DB.reconFiles || []).find(x => x.id === fileId);
+        if (!f) return;
+        f.done = true; f.doneDate = today();
+        logActivity('reconciliation', `Reconciliation marked done: ${f.filename}`);
+        saveDB(); renderCurrentPage();
+        toast('Reconciliation marked as done');
+      }
+      function deleteReconFile(fileId) {
+        DB.reconFiles = (DB.reconFiles || []).filter(x => x.id !== fileId);
+        saveDB(); renderCurrentPage();
+        toast('Statement removed');
       }
 
       function parseStatementCSV(text){
