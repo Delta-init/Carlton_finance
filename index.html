@@ -4103,6 +4103,8 @@
       }
       function modalAddStudent(id) {
         const s = id ? DB.students.find((x) => x.id === id) : null;
+        const sessionTypes = ["Individual", "Group", "Online", "Hybrid"];
+        const levels = ["Beginner", "Intermediate", "Advanced", "Professional"];
         return `<div class="modal-title">${s ? "Edit student" : "Add student"}</div>
   <div class="form-row2 form-row2-wrap">
     <div class="field"><label>Full name</label><input id="f-name" value="${s ? s.name : ""}" placeholder="Student name"></div>
@@ -4113,7 +4115,22 @@
     <div class="field"><label>Currency</label><select id="f-cur" onchange="updateHint('fee-hint','f-fee','f-cur')">${curOptions(s ? s.feeCurrency : "AED")}</select></div>
   </div>
   <div class="converted-hint" id="fee-hint"></div>
-  <div class="field"><label>Status</label><select id="f-status">${["active", "inactive"].map((x) => `<option value="${x}"${s && s.status === x ? " selected" : ""}>${x}</option>`).join("")}</select></div>
+  <div class="form-row2 form-row2-wrap">
+    <div class="field"><label>Parent Name</label><input id="f-parent" value="${s ? s.parentName || "" : ""}" placeholder="Parent / guardian name"></div>
+    <div class="field"><label>Contact Number</label><input id="f-contact" value="${s ? s.contactNumber || "" : ""}" placeholder="+971 50 000 0000"></div>
+  </div>
+  <div class="form-row2 form-row2-wrap">
+    <div class="field"><label>Country</label><input id="f-country" value="${s ? s.country || "" : ""}" placeholder="Country of residence"></div>
+    <div class="field"><label>Nationality</label><input id="f-nationality" value="${s ? s.nationality || "" : ""}" placeholder="Nationality"></div>
+  </div>
+  <div class="form-row2 form-row2-wrap">
+    <div class="field"><label>Age</label><input id="f-age" type="number" min="1" max="120" value="${s ? s.age || "" : ""}" placeholder="Age"></div>
+    <div class="field"><label>Level</label><select id="f-level">${levels.map((x) => `<option value="${x}"${s && s.level === x ? " selected" : ""}>${x}</option>`).join("")}</select></div>
+  </div>
+  <div class="form-row2 form-row2-wrap">
+    <div class="field"><label>Session Type</label><select id="f-session">${sessionTypes.map((x) => `<option value="${x}"${s && s.sessionType === x ? " selected" : ""}>${x}</option>`).join("")}</select></div>
+    <div class="field"><label>Status</label><select id="f-status">${["active", "inactive"].map((x) => `<option value="${x}"${s && s.status === x ? " selected" : ""}>${x}</option>`).join("")}</select></div>
+  </div>
   <div class="modal-actions">
     <button class="btn" onclick="closeModal()">Cancel</button>
     <button class="btn btn-accent" onclick="saveStudent('${s ? s.id : ""}')">${s ? "Save" : "Add student"}</button>
@@ -4127,7 +4144,14 @@
           prog = v("f-prog"),
           fee = parseFloat(v("f-fee")) || 0,
           cur = v("f-cur"),
-          status = v("f-status");
+          status = v("f-status"),
+          parentName = v("f-parent"),
+          contactNumber = v("f-contact"),
+          country = v("f-country"),
+          nationality = v("f-nationality"),
+          age = parseInt(v("f-age")) || null,
+          level = v("f-level"),
+          sessionType = v("f-session");
         if (!name) {
           toast("Name required", "amber");
           return;
@@ -4140,6 +4164,13 @@
             feeAmount: fee,
             feeCurrency: cur,
             status,
+            parentName,
+            contactNumber,
+            country,
+            nationality,
+            age,
+            level,
+            sessionType,
           });
         } else
           DB.students.push({
@@ -4149,6 +4180,13 @@
             feeAmount: fee,
             feeCurrency: cur,
             status,
+            parentName,
+            contactNumber,
+            country,
+            nationality,
+            age,
+            level,
+            sessionType,
           });
         logActivity("student", `${id ? "Updated" : "Added"} student: ${name}`);
         saveDB();
