@@ -2670,14 +2670,15 @@
       DB.students.length === 0
         ? `<div class="empty"><div class="empty-icon">👥</div><div class="empty-text">No students yet</div>${canCreate ? `<button class="btn btn-accent" onclick="openModal(modalAddStudent())">Add first student</button>` : ""}</div>`
         : `<div class="tbl-wrap"><table>
-      <tr><th>Name</th><th>Program</th><th>Fee</th><th>Currency</th><th>${CUR} equiv.</th><th>Status</th><th>Payment</th><th></th></tr>
+      <tr><th>Name</th><th>Programs</th><th>Status</th><th>Payment</th><th></th></tr>
       ${DB.students
         .map((s) => {
           const isPaid = paid.has(s.id);
+          const progList = (DB.quotations || []).filter(q => q.studentId === s.id && (q.status === "accepted" || q.status === "converted")).map(q => q.program).filter(Boolean);
+          const progDisplay = progList.length ? [...new Set(progList)].join(", ") : `<span class="text3">—</span>`;
           return `<tr>
         <td><div class="fl"><div class="ic ic-blue" style="width:26px;height:26px;font-size:9px">${initials(s.name)}</div><span style="font-weight:500">${s.name}</span></div></td>
-        <td class="text2">${s.program}</td><td class="mono">${fmtOrig(s.feeAmount, s.feeCurrency)}</td>
-        <td>${curBadge(s.feeCurrency)}</td><td class="mono text3">${fmt(toUSD(s.feeAmount, s.feeCurrency), "USD")}</td>
+        <td class="text2">${progDisplay}</td>
         <td>${statusBadge(s.status)}</td><td>${isPaid ? statusBadge("paid") : `<span class="badge b-red">unpaid</span>`}</td>
         <td class="fl" style="gap:4px;justify-content:flex-end">
           ${canCreate ? `<button class="btn btn-sm" onclick="openModal(modalAddPayment('${s.id}'));updatePaySummary()">Pay</button>` : ""}
@@ -4262,13 +4263,8 @@
         return `<div class="modal-title">${s ? "Edit student" : "Add student"}</div>
   <div class="form-row2 form-row2-wrap">
     <div class="field"><label>Full name</label><input id="f-name" value="${s ? s.name : ""}" placeholder="Student name"></div>
-    <div class="field"><label>Program</label><select id="f-prog" onchange="autoFillProgFee()">${programOptions(s ? s.program : "")}</select></div>
+    <div class="field"><label>Status</label><select id="f-status">${["active", "inactive"].map((x) => `<option value="${x}"${s && s.status === x ? " selected" : ""}>${x}</option>`).join("")}</select></div>
   </div>
-  <div class="form-row2 form-row2-wrap">
-    <div class="field"><label>Monthly fee</label><input id="f-fee" type="number" value="${s ? s.feeAmount : 0}" oninput="updateHint('fee-hint','f-fee','f-cur')"></div>
-    <div class="field"><label>Currency</label><select id="f-cur" onchange="updateHint('fee-hint','f-fee','f-cur')">${curOptions(s ? s.feeCurrency : "AED")}</select></div>
-  </div>
-  <div class="converted-hint" id="fee-hint"></div>
   <div class="form-row2 form-row2-wrap">
     <div class="field"><label>Parent Name</label><input id="f-parent" value="${s ? s.parentName || "" : ""}" placeholder="Parent / guardian name"></div>
     <div class="field"><label>Contact Number</label><input id="f-contact" value="${s ? s.contactNumber || "" : ""}" placeholder="+971 50 000 0000"></div>
@@ -4281,10 +4277,7 @@
     <div class="field"><label>Age</label><input id="f-age" type="number" min="1" max="120" value="${s ? s.age || "" : ""}" placeholder="Age"></div>
     <div class="field"><label>Level</label><select id="f-level">${levels.map((x) => `<option value="${x}"${s && s.level === x ? " selected" : ""}>${x}</option>`).join("")}</select></div>
   </div>
-  <div class="form-row2 form-row2-wrap">
-    <div class="field"><label>Session Type</label><select id="f-session">${sessionTypes.map((x) => `<option value="${x}"${s && s.sessionType === x ? " selected" : ""}>${x}</option>`).join("")}</select></div>
-    <div class="field"><label>Status</label><select id="f-status">${["active", "inactive"].map((x) => `<option value="${x}"${s && s.status === x ? " selected" : ""}>${x}</option>`).join("")}</select></div>
-  </div>
+  <div class="field"><label>Session Type</label><select id="f-session">${sessionTypes.map((x) => `<option value="${x}"${s && s.sessionType === x ? " selected" : ""}>${x}</option>`).join("")}</select></div>
   <div class="modal-actions">
     <button class="btn" onclick="closeModal()">Cancel</button>
     <button class="btn btn-accent" onclick="saveStudent('${s ? s.id : ""}')">${s ? "Save" : "Add student"}</button>
@@ -4295,9 +4288,6 @@
       }
       function saveStudent(id) {
         const name = v("f-name"),
-          prog = v("f-prog"),
-          fee = parseFloat(v("f-fee")) || 0,
-          cur = v("f-cur"),
           status = v("f-status"),
           parentName = v("f-parent"),
           contactNumber = v("f-contact"),
@@ -4312,36 +4302,9 @@
         }
         if (id) {
           const s = DB.students.find((x) => x.id === id);
-          Object.assign(s, {
-            name,
-            program: prog,
-            feeAmount: fee,
-            feeCurrency: cur,
-            status,
-            parentName,
-            contactNumber,
-            country,
-            nationality,
-            age,
-            level,
-            sessionType,
-          });
+          Object.assign(s, { name, status, parentName, contactNumber, country, nationality, age, level, sessionType });
         } else
-          DB.students.push({
-            id: uid(),
-            name,
-            program: prog,
-            feeAmount: fee,
-            feeCurrency: cur,
-            status,
-            parentName,
-            contactNumber,
-            country,
-            nationality,
-            age,
-            level,
-            sessionType,
-          });
+          DB.students.push({ id: uid(), name, status, parentName, contactNumber, country, nationality, age, level, sessionType });
         logActivity("student", `${id ? "Updated" : "Added"} student: ${name}`);
         saveDB();
         closeModal();
@@ -5142,15 +5105,25 @@
         if (ce) ce.value = prog.feeCurrency;
         updateHint("fee-hint", "f-fee", "f-cur");
       }
+      function getStudentQuotation(sid) {
+        const qs = (DB.quotations || []).filter(q => q.studentId === sid);
+        if (window._convertingQuotationId) {
+          const cq = qs.find(q => q.id === window._convertingQuotationId);
+          if (cq) return cq;
+        }
+        return qs.find(q => q.status === "accepted") || qs.find(q => q.status === "converted") || qs.find(q => q.status === "sent") || null;
+      }
       function autoFillFee() {
-        const sid = v("f-sid"),
-          s = getStudent(sid);
+        const sid = v("f-sid");
+        const q = getStudentQuotation(sid);
         const ae = document.getElementById("f-amt"),
           ce = document.getElementById("f-cur"),
           pe = document.getElementById("f-prog");
-        if (ae && s.feeAmount) ae.value = s.feeAmount;
-        if (ce && s.feeCurrency) ce.value = s.feeCurrency;
-        if (pe && s.program) pe.value = s.program;
+        if (q) {
+          if (ae) ae.value = q.amount;
+          if (ce) ce.value = q.currency;
+          if (pe) pe.value = q.program || "";
+        }
         updateHint("pay-hint", "f-amt", "f-cur");
         updatePaySummary();
       }
@@ -5159,9 +5132,9 @@
         if (!el) return;
         const sid = v("f-sid");
         if (!sid) { el.innerHTML = ""; return; }
-        const s = getStudent(sid);
-        const cur = s.feeCurrency || "AED";
-        const monthlyFee = s.feeAmount || 0;
+        const q = getStudentQuotation(sid);
+        const cur = (q && q.currency) || "AED";
+        const monthlyFee = (q && q.amount) || 0;
         const prevPayments = DB.payments.filter((p) => p.studentId === sid);
         const totalPaid = prevPayments.reduce((sum, p) => sum + cvt(p.amount, p.currency, cur), 0);
         const nowAmt = parseFloat(v("f-amt")) || 0;
