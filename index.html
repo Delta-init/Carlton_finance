@@ -5009,7 +5009,7 @@
         const nowInCur = cvt(nowAmt, nowCur, cur);
         const balanceBefore = monthlyFee - totalPaid;
         const balanceAfter = balanceBefore - nowInCur;
-        const recent = [...prevPayments].sort((a, b) => (b.date > a.date ? 1 : -1)).slice(0, 5);
+        const recent = [...prevPayments].sort((a, b) => (b.date > a.date ? 1 : -1));
         const r = (n) => Math.round(n * 100) / 100;
         el.innerHTML = `<div style="background:var(--bg3);border-radius:10px;padding:14px 16px;margin:8px 0 4px;font-size:13px">
   <div style="font-weight:600;color:var(--text1);margin-bottom:10px;font-size:13px">Payment summary</div>
