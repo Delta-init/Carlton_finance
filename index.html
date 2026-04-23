@@ -5627,9 +5627,10 @@
         const stmtHtml = files.length === 0
           ? `<div class="upload-zone" onclick="triggerStatementUpload()" style="margin:0"><div class="uz-icon">📄</div><div class="uz-title">No statements uploaded yet</div><div class="uz-sub">Click to upload</div></div>`
           : `<div class="tbl-wrap"><table>
-              <tr><th>File name</th><th>Uploaded</th><th>Status</th><th></th></tr>
+              <tr><th>File name</th><th>Statement Date</th><th>Uploaded</th><th>Status</th><th></th></tr>
               ${files.map(f=>`<tr>
                 <td style="font-weight:500;font-size:12px">${f.filename}</td>
+                <td><input type="date" value="${f.statementDate || f.uploadDate}" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:3px 6px;font-size:12px;color:var(--text);width:130px" onchange="updateReconFileDate('${f.id}',this.value)"></td>
                 <td class="text2" style="white-space:nowrap">${dateStr(f.uploadDate)}</td>
                 <td>${f.done ? `<span class="badge b-green">Done · ${dateStr(f.doneDate)}</span>` : `<span class="badge b-amber">Pending</span>`}</td>
                 <td class="fl" style="gap:4px;justify-content:flex-end">
@@ -5646,7 +5647,9 @@
             <div class="recon-stat"><div class="rs-lbl">Reconciled</div><div class="rs-val green">${doneCount}</div></div>
             <div class="recon-stat"><div class="rs-lbl">Pending</div><div class="rs-val ${pendingCount>0?'red':'text3'}">${pendingCount}</div></div>
           </div>
-          <div style="display:flex;gap:8px;margin-bottom:12px">
+          <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
+            <label style="font-size:12px;color:var(--text2)">Statement date:</label>
+            <input type="date" id="recon-stmt-date" value="${today()}" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;color:var(--text)">
             <button class="btn btn-sm" onclick="triggerStatementUpload()">↑ Upload statement</button>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
@@ -5683,10 +5686,16 @@
         const file = input.files[0];
         if(!file) return;
         if(!DB.reconFiles) DB.reconFiles = [];
-        DB.reconFiles.push({ id: uid(), accountId: RECON_ACCOUNT_ID, filename: file.name, size: file.size, uploadDate: today(), done: false, doneDate: null });
+        const dateEl = document.getElementById('recon-stmt-date');
+        const statementDate = (dateEl && dateEl.value) || today();
+        DB.reconFiles.push({ id: uid(), accountId: RECON_ACCOUNT_ID, filename: file.name, size: file.size, uploadDate: today(), statementDate, done: false, doneDate: null });
         _pendingUploadDate = null;
         saveDB(); renderCurrentPage();
         toast(`Statement "${file.name}" uploaded`);
+      }
+      function updateReconFileDate(fileId, date) {
+        const f = (DB.reconFiles || []).find(x => x.id === fileId);
+        if (f) { f.statementDate = date; saveDB(); }
       }
       function markReconDone(fileId) {
         const f = (DB.reconFiles || []).find(x => x.id === fileId);
