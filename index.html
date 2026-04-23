@@ -5592,48 +5592,72 @@
         return null;
       }
 
+      let _rhFilters = { dateFrom: '', dateTo: '', accountId: '', status: '' };
       function reconHistoryFullPage() {
-        const allFiles = (DB.reconFiles || []).slice().sort((a, b) => (b.statementDate || b.uploadDate) > (a.statementDate || a.uploadDate) ? 1 : -1);
-        if (allFiles.length === 0) return `<div class="empty"><div class="empty-icon">🕐</div><div class="empty-text">No reconciliation records yet</div></div>`;
-        // Group by statement date
+        const f = _rhFilters;
+        const accountOptions = `<option value="">All accounts</option>` + DB.accounts.map(a => `<option value="${a.id}"${f.accountId===a.id?' selected':''}>${a.name} (${a.currency})</option>`).join('');
+        let files = (DB.reconFiles || []).slice();
+        if (f.accountId) files = files.filter(x => x.accountId === f.accountId);
+        if (f.dateFrom) files = files.filter(x => (x.statementDate || x.uploadDate) >= f.dateFrom);
+        if (f.dateTo)   files = files.filter(x => (x.statementDate || x.uploadDate) <= f.dateTo);
+        if (f.status === 'done')    files = files.filter(x => x.done);
+        if (f.status === 'pending') files = files.filter(x => !x.done);
+        files.sort((a, b) => (b.statementDate || b.uploadDate) > (a.statementDate || a.uploadDate) ? 1 : -1);
+
         const byDate = {};
-        allFiles.forEach(f => {
-          const d = f.statementDate || f.uploadDate;
-          if (!byDate[d]) byDate[d] = [];
-          byDate[d].push(f);
-        });
+        files.forEach(x => { const d = x.statementDate || x.uploadDate; if (!byDate[d]) byDate[d] = []; byDate[d].push(x); });
         const dates = Object.keys(byDate).sort().reverse();
-        const blocksHtml = dates.map(date => {
-          const items = byDate[date];
-          return `<div class="card" style="margin-bottom:12px">
-            <div class="card-header">
-              <div class="card-title">${dateStr(date)}</div>
-              <div style="display:flex;gap:6px">
-                <span class="badge b-green">${items.filter(f=>f.done).length} done</span>
-                ${items.filter(f=>!f.done).length ? `<span class="badge b-amber">${items.filter(f=>!f.done).length} pending</span>` : ''}
-              </div>
-            </div>
-            <div class="tbl-wrap"><table>
-              <tr><th>Account</th><th>File</th><th>Status</th><th>Done Date</th><th>Description</th></tr>
-              ${items.map(f => {
-                const acc = getAccount(f.accountId);
-                return `<tr>
-                  <td><span style="font-weight:500">${acc.name || '—'}</span> <span class="badge" style="background:rgba(26,158,158,.1);color:var(--accent);margin-left:4px">${acc.currency || ''}</span></td>
-                  <td style="font-size:12px;color:var(--text2)">${f.filename}</td>
-                  <td>${f.done ? `<span class="badge b-green">Done</span>` : `<span class="badge b-amber">Pending</span>`}</td>
-                  <td class="text2" style="white-space:nowrap">${f.done ? dateStr(f.doneDate) : '—'}</td>
-                  <td style="font-size:12px;color:var(--text2);max-width:260px">${f.description || '—'}</td>
-                </tr>`;
-              }).join('')}
-            </table></div>
-          </div>`;
-        }).join('');
-        const totalDone = allFiles.filter(f => f.done).length;
-        const totalPending = allFiles.filter(f => !f.done).length;
-        return `<div class="metrics m3" style="margin-bottom:16px">
-          <div class="metric"><div class="metric-label">Total statements</div><div class="metric-value">${allFiles.length}</div></div>
+
+        const blocksHtml = dates.length === 0
+          ? `<div class="empty"><div class="empty-icon">🕐</div><div class="empty-text">No records match the filters</div></div>`
+          : dates.map(date => {
+              const items = byDate[date];
+              return `<div class="card" style="margin-bottom:12px">
+                <div class="card-header">
+                  <div class="card-title">${dateStr(date)}</div>
+                  <div style="display:flex;gap:6px">
+                    <span class="badge b-green">${items.filter(x=>x.done).length} done</span>
+                    ${items.filter(x=>!x.done).length ? `<span class="badge b-amber">${items.filter(x=>!x.done).length} pending</span>` : ''}
+                  </div>
+                </div>
+                <div class="tbl-wrap"><table>
+                  <tr><th>Account</th><th>File</th><th>Status</th><th>Done Date</th><th>Description</th></tr>
+                  ${items.map(x => {
+                    const acc = getAccount(x.accountId);
+                    return `<tr>
+                      <td><span style="font-weight:500">${acc.name||'—'}</span> <span class="badge" style="background:rgba(26,158,158,.1);color:var(--accent);margin-left:4px">${acc.currency||''}</span></td>
+                      <td style="font-size:12px;color:var(--text2)">${x.filename}</td>
+                      <td>${x.done ? `<span class="badge b-green">Done</span>` : `<span class="badge b-amber">Pending</span>`}</td>
+                      <td class="text2" style="white-space:nowrap">${x.done ? dateStr(x.doneDate) : '—'}</td>
+                      <td style="font-size:12px;color:var(--text2);max-width:260px">${x.description||'—'}</td>
+                    </tr>`;
+                  }).join('')}
+                </table></div>
+              </div>`;
+            }).join('');
+
+        const totalDone = files.filter(x=>x.done).length;
+        const totalPending = files.filter(x=>!x.done).length;
+        return `
+        <div class="card" style="margin-bottom:12px">
+          <div class="card-header"><div class="card-title">Filters</div>
+            ${(f.dateFrom||f.dateTo||f.accountId||f.status)?`<button class="btn btn-sm" onclick="_rhFilters={dateFrom:'',dateTo:'',accountId:'',status:''};renderCurrentPage()">Clear filters</button>`:''}
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;padding:4px 0 8px">
+            <div class="field" style="margin:0;min-width:130px"><label>From date</label><input type="date" value="${f.dateFrom}" onchange="_rhFilters.dateFrom=this.value;renderCurrentPage()" style="width:100%"></div>
+            <div class="field" style="margin:0;min-width:130px"><label>To date</label><input type="date" value="${f.dateTo}" onchange="_rhFilters.dateTo=this.value;renderCurrentPage()" style="width:100%"></div>
+            <div class="field" style="margin:0;min-width:160px"><label>Account</label><select onchange="_rhFilters.accountId=this.value;renderCurrentPage()" style="width:100%">${accountOptions}</select></div>
+            <div class="field" style="margin:0;min-width:120px"><label>Status</label><select onchange="_rhFilters.status=this.value;renderCurrentPage()" style="width:100%">
+              <option value=""${!f.status?' selected':''}>All</option>
+              <option value="done"${f.status==='done'?' selected':''}>Done</option>
+              <option value="pending"${f.status==='pending'?' selected':''}>Pending</option>
+            </select></div>
+          </div>
+        </div>
+        <div class="metrics m3" style="margin-bottom:16px">
+          <div class="metric"><div class="metric-label">Shown</div><div class="metric-value">${files.length}</div></div>
           <div class="metric"><div class="metric-label">Reconciled</div><div class="metric-value green">${totalDone}</div></div>
-          <div class="metric"><div class="metric-label">Pending</div><div class="metric-value ${totalPending > 0 ? 'red' : 'text3'}">${totalPending}</div></div>
+          <div class="metric"><div class="metric-label">Pending</div><div class="metric-value ${totalPending>0?'red':'text3'}">${totalPending}</div></div>
         </div>
         ${blocksHtml}`;
       }
