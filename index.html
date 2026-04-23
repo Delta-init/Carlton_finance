@@ -2772,9 +2772,9 @@
         const q = (document.getElementById("qf-sid-search").value || "").toLowerCase();
         const dd = document.getElementById("quot-student-dd");
         if (!dd) return;
-        const matches = DB.students.filter(s => s.name.toLowerCase().includes(q));
+        const matches = DB.students.filter(s => s.name.toLowerCase().includes(q) || (s.contactNumber || "").toLowerCase().includes(q));
         dd.innerHTML = matches.length
-          ? matches.map(s => `<div style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px" onmousedown="selectQuotStudent('${s.id}','${s.name.replace(/'/g,"&#39;")}','${s.program||""}',${s.feeAmount||0},'${s.feeCurrency||"AED"}')">${s.name}${s.program ? ` <span style="color:var(--text3);font-size:11px;margin-left:6px">${s.program}</span>` : ""}</div>`).join("")
+          ? matches.map(s => `<div style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px" onmousedown="selectQuotStudent('${s.id}','${s.name.replace(/'/g,"&#39;")}','${s.program||""}',${s.feeAmount||0},'${s.feeCurrency||"AED"}')"><div style="font-weight:500">${s.name}</div>${s.contactNumber ? `<div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:2px">${s.contactNumber}</div>` : ""}</div>`).join("")
           : `<div style="padding:9px 12px;color:var(--text3);font-size:13px">No students found</div>`;
         dd.style.display = "block";
       }
@@ -5179,12 +5179,12 @@
         const q = (document.getElementById("f-sid-search").value || "").toLowerCase();
         const dd = document.getElementById("pay-student-dd");
         if (!dd) return;
-        const matches = DB.students.filter((s) => s.name.toLowerCase().includes(q));
+        const matches = DB.students.filter((s) => s.name.toLowerCase().includes(q) || (s.contactNumber || "").toLowerCase().includes(q));
         dd.innerHTML = matches.length
           ? matches.map((s) =>
               `<div style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
                 onmousedown="selectPayStudent('${s.id}','${s.name.replace(/'/g, "&#39;")}')"
-              >${s.name}${s.program ? ` <span style="color:var(--text3);font-size:11px;margin-left:6px">${s.program}</span>` : ""}</div>`
+              ><div style="font-weight:500">${s.name}</div>${s.contactNumber ? `<div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:2px">${s.contactNumber}</div>` : ""}</div>`
             ).join("")
           : `<div style="padding:9px 12px;color:var(--text3);font-size:13px">No students found</div>`;
         dd.style.display = "block";
