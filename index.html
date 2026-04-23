@@ -2709,15 +2709,19 @@
   ${qs.length === 0
     ? `<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">No quotations yet</div>${canCreate ? `<button class="btn btn-accent" onclick="openModal(modalAddQuotation())">Create first quotation</button>` : ""}</div>`
     : `<div class="tbl-wrap"><table>
-  <tr><th>No.</th><th>Student</th><th>Program</th><th>Amount</th><th>Date</th><th>Valid Until</th><th>Status</th><th></th></tr>
+  <tr><th>No.</th><th>Student</th><th>Program</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Date</th><th>Valid Until</th><th>Status</th><th></th></tr>
   ${qs.map(q => {
     const st = q.studentId ? getStudent(q.studentId) : null;
     const name = st ? st.name : (q.studentName || "—");
+    const paid = q.studentId ? (DB.payments || []).filter(p => p.studentId === q.studentId).reduce((sum, p) => sum + cvt(p.amount, p.currency, q.currency), 0) : 0;
+    const balance = q.amount - paid;
     return `<tr>
       <td class="mono" style="font-size:12px">${q.quotationNo}</td>
       <td style="font-weight:500">${name}</td>
       <td class="text2">${q.program || "—"}</td>
       <td class="mono">${fmtOrig(q.amount, q.currency)}</td>
+      <td class="mono" style="color:var(--green)">${fmtOrig(Math.round(paid * 100) / 100, q.currency)}</td>
+      <td class="mono" style="color:${balance > 0 ? "var(--red)" : balance < 0 ? "var(--green)" : "var(--text2)"}">${balance === 0 ? "Settled" : fmtOrig(Math.abs(Math.round(balance * 100) / 100), q.currency) + (balance < 0 ? " cr" : "")}</td>
       <td class="text2">${dateStr(q.date)}</td>
       <td class="text2" style="color:${q.validUntil && q.validUntil < today() && q.status !== "converted" && q.status !== "cancelled" ? "var(--red)" : "inherit"}">${dateStr(q.validUntil)}</td>
       <td><span class="badge ${statusBadge[q.status] || "b-gray"}">${q.status}</span></td>
