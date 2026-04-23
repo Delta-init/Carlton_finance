@@ -5634,6 +5634,7 @@
                 <td class="text2" style="white-space:nowrap">${dateStr(f.uploadDate)}</td>
                 <td>${f.done ? `<span class="badge b-green">Done · ${dateStr(f.doneDate)}</span>` : `<span class="badge b-amber">Pending</span>`}</td>
                 <td class="fl" style="gap:4px;justify-content:flex-end">
+                  ${f.data ? `<button class="btn btn-sm" onclick="previewReconFile('${f.id}')">Preview</button>` : ''}
                   ${!f.done && canEdit ? `<button class="btn btn-sm btn-accent" onclick="markReconDone('${f.id}')">✓ Done</button>` : ''}
                   ${canEdit ? `<button class="btn btn-sm" style="color:var(--red)" onclick="deleteReconFile('${f.id}')">Remove</button>` : ''}
                 </td>
@@ -5688,10 +5689,48 @@
         if(!DB.reconFiles) DB.reconFiles = [];
         const dateEl = document.getElementById('recon-stmt-date');
         const statementDate = (dateEl && dateEl.value) || today();
-        DB.reconFiles.push({ id: uid(), accountId: RECON_ACCOUNT_ID, filename: file.name, size: file.size, uploadDate: today(), statementDate, done: false, doneDate: null });
-        _pendingUploadDate = null;
-        saveDB(); renderCurrentPage();
-        toast(`Statement "${file.name}" uploaded`);
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          DB.reconFiles.push({ id: uid(), accountId: RECON_ACCOUNT_ID, filename: file.name, size: file.size, mimeType: file.type, uploadDate: today(), statementDate, done: false, doneDate: null, data: e.target.result });
+          _pendingUploadDate = null;
+          saveDB(); renderCurrentPage();
+          toast(`Statement "${file.name}" uploaded`);
+        };
+        reader.readAsDataURL(file);
+      }
+      function previewReconFile(fileId) {
+        const f = (DB.reconFiles || []).find(x => x.id === fileId);
+        if (!f || !f.data) { toast('No preview available', 'amber'); return; }
+        const isPdf = f.filename.toLowerCase().endsWith('.pdf') || (f.mimeType || '').includes('pdf');
+        const isImg = /\.(png|jpg|jpeg|gif|webp)$/i.test(f.filename) || (f.mimeType || '').startsWith('image/');
+        const isCsv = /\.(csv|txt|tsv)$/i.test(f.filename);
+        let content = '';
+        if (isPdf) {
+          content = `<iframe src="${f.data}" style="width:100%;height:70vh;border:none;border-radius:8px"></iframe>`;
+        } else if (isImg) {
+          content = `<img src="${f.data}" style="max-width:100%;max-height:70vh;border-radius:8px;display:block;margin:0 auto">`;
+        } else if (isCsv) {
+          const text = atob(f.data.split(',')[1] || '');
+          const lines = text.split(/\r?\n/).filter(l=>l.trim()).slice(0, 100);
+          const delim = lines[0] && lines[0].includes('\t') ? '\t' : ',';
+          const rows = lines.map(l => l.split(delim).map(c => c.replace(/^["']|["']$/g,'')));
+          content = `<div class="tbl-wrap" style="max-height:65vh;overflow-y:auto"><table><tr>${(rows[0]||[]).map(h=>`<th>${h}</th>`).join('')}</tr>${rows.slice(1).map(r=>`<tr>${r.map(c=>`<td style="font-size:12px">${c}</td>`).join('')}</tr>`).join('')}</table></div>`;
+        } else {
+          content = `<div style="text-align:center;padding:40px">
+            <div style="font-size:40px;margin-bottom:12px">📄</div>
+            <div style="font-weight:600;margin-bottom:8px">${f.filename}</div>
+            <div class="text2" style="margin-bottom:16px">Preview not available for this file type</div>
+            <a href="${f.data}" download="${f.filename}" class="btn btn-accent">Download file</a>
+          </div>`;
+        }
+        openModal(`<div class="modal-title">${f.filename}</div>
+  <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center">
+    <span class="text2" style="font-size:12px">Statement date: ${dateStr(f.statementDate || f.uploadDate)}</span>
+    <span class="text3" style="font-size:11px">· Uploaded ${dateStr(f.uploadDate)}</span>
+    <a href="${f.data}" download="${f.filename}" class="btn btn-sm" style="margin-left:auto">↓ Download</a>
+  </div>
+  ${content}
+  <div class="modal-actions"><button class="btn" onclick="closeModal()">Close</button></div>`);
       }
       function updateReconFileDate(fileId, date) {
         const f = (DB.reconFiles || []).find(x => x.id === fileId);
