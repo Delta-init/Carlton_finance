@@ -5599,14 +5599,23 @@
 
         // Collect all transactions from all accounts grouped by date+account
         const reconFiles = DB.reconFiles || [];
-        // Build a lookup: accountId → array of reconFiles for quick recon status check
-        const reconByAccDate = {}; // key: accId+'|'+date → best matching recon file
+        // Build a lookup keyed by year-month so a monthly statement covers all days in that month
+        const reconByAccMonth = {}; // key: accId+'|'+YYYY-MM → best matching recon file
+        reconFiles.forEach(rf => {
+          const d = rf.statementDate || rf.uploadDate;
+          const ym = d.substring(0, 7);
+          const key = rf.accountId + '|' + ym;
+          // prefer done over pending
+          if (!reconByAccMonth[key] || (!reconByAccMonth[key].done && rf.done)) reconByAccMonth[key] = rf;
+        });
+        const reconByAccDate = {}; // keep exact-date lookup for "no statement" dates from recon files
         reconFiles.forEach(rf => {
           const d = rf.statementDate || rf.uploadDate;
           const key = rf.accountId + '|' + d;
-          // prefer done over pending
           if (!reconByAccDate[key] || (!reconByAccDate[key].done && rf.done)) reconByAccDate[key] = rf;
         });
+        // Helper: find recon file for a given account+date (month-level match preferred)
+        const getRf = (aid, date) => reconByAccMonth[aid + '|' + date.substring(0, 7)] || reconByAccDate[aid + '|' + date];
 
         // Get transactions per account
         const txnsByDate = {}; // date → { accId: { acc, txns[] } }
@@ -5638,7 +5647,7 @@
           allDates = allDates.filter(d => {
             const accIds = fl.accountId ? [fl.accountId] : Object.keys(txnsByDate[d]);
             return accIds.some(aid => {
-              const rf = reconByAccDate[aid+'|'+d];
+              const rf = getRf(aid, d);
               if (fl.status === 'done') return rf && rf.done;
               if (fl.status === 'pending') return !rf || !rf.done;
               return true;
@@ -5656,7 +5665,7 @@
               const accIds = Object.keys(accsOnDate);
               const rowsHtml = accIds.map(aid => {
                 const { acc, txns } = accsOnDate[aid];
-                const rf = reconByAccDate[aid+'|'+date];
+                const rf = getRf(aid, date);
                 const reconDone = rf && rf.done;
                 const reconPending = rf && !rf.done;
                 if (fl.status === 'done' && !reconDone) return '';
