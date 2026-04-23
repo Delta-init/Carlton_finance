@@ -1287,6 +1287,11 @@
             <path d="M2 4h12M2 8h8M2 12h5"/><path d="M11 10l1.5 1.5L15 8"/>
           </svg>Reconciliation
         </div>
+        <div class="nav-item" id="nav-recon-history" onclick="nav('recon-history', this)">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="8" cy="8" r="6"/><path d="M8 5v3.5l2.5 1.5"/>
+          </svg>Recon History
+        </div>
         <div class="nav-item" id="nav-users" onclick="nav('users', this)">
           <svg
             width="14"
@@ -2324,6 +2329,7 @@
           reminders,
           reports,
           reconciliation: reconciliationPage,
+          "recon-history": reconHistoryFullPage,
           users: usersPage,
         };
         if (fns[currentPage])
@@ -5586,6 +5592,51 @@
         return null;
       }
 
+      function reconHistoryFullPage() {
+        const allFiles = (DB.reconFiles || []).slice().sort((a, b) => (b.statementDate || b.uploadDate) > (a.statementDate || a.uploadDate) ? 1 : -1);
+        if (allFiles.length === 0) return `<div class="empty"><div class="empty-icon">🕐</div><div class="empty-text">No reconciliation records yet</div></div>`;
+        // Group by statement date
+        const byDate = {};
+        allFiles.forEach(f => {
+          const d = f.statementDate || f.uploadDate;
+          if (!byDate[d]) byDate[d] = [];
+          byDate[d].push(f);
+        });
+        const dates = Object.keys(byDate).sort().reverse();
+        const blocksHtml = dates.map(date => {
+          const items = byDate[date];
+          return `<div class="card" style="margin-bottom:12px">
+            <div class="card-header">
+              <div class="card-title">${dateStr(date)}</div>
+              <div style="display:flex;gap:6px">
+                <span class="badge b-green">${items.filter(f=>f.done).length} done</span>
+                ${items.filter(f=>!f.done).length ? `<span class="badge b-amber">${items.filter(f=>!f.done).length} pending</span>` : ''}
+              </div>
+            </div>
+            <div class="tbl-wrap"><table>
+              <tr><th>Account</th><th>File</th><th>Status</th><th>Done Date</th><th>Description</th></tr>
+              ${items.map(f => {
+                const acc = getAccount(f.accountId);
+                return `<tr>
+                  <td><span style="font-weight:500">${acc.name || '—'}</span> <span class="badge" style="background:rgba(26,158,158,.1);color:var(--accent);margin-left:4px">${acc.currency || ''}</span></td>
+                  <td style="font-size:12px;color:var(--text2)">${f.filename}</td>
+                  <td>${f.done ? `<span class="badge b-green">Done</span>` : `<span class="badge b-amber">Pending</span>`}</td>
+                  <td class="text2" style="white-space:nowrap">${f.done ? dateStr(f.doneDate) : '—'}</td>
+                  <td style="font-size:12px;color:var(--text2);max-width:260px">${f.description || '—'}</td>
+                </tr>`;
+              }).join('')}
+            </table></div>
+          </div>`;
+        }).join('');
+        const totalDone = allFiles.filter(f => f.done).length;
+        const totalPending = allFiles.filter(f => !f.done).length;
+        return `<div class="metrics m3" style="margin-bottom:16px">
+          <div class="metric"><div class="metric-label">Total statements</div><div class="metric-value">${allFiles.length}</div></div>
+          <div class="metric"><div class="metric-label">Reconciled</div><div class="metric-value green">${totalDone}</div></div>
+          <div class="metric"><div class="metric-label">Pending</div><div class="metric-value ${totalPending > 0 ? 'red' : 'text3'}">${totalPending}</div></div>
+        </div>
+        ${blocksHtml}`;
+      }
       function reconHistoryHtml(accountId) {
         const allFiles = (DB.reconFiles || []);
         const history = allFiles.filter(f => f.done).slice().sort((a,b) => b.doneDate > a.doneDate ? 1 : -1);
