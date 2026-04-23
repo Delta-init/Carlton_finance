@@ -4202,8 +4202,17 @@
         const s = initialId ? getStudent(initialId) : null;
         return `<div class="modal-title">Record payment</div>
   <div class="form-row2 form-row2-wrap">
-    <div class="field"><label>Student</label><select id="f-sid" onchange="autoFillFee()">${studentOptions(initialId)}</select></div>
-    <div class="field"><label>Program</label><input id="f-prog" value="${s ? s.program : ""}" readonly style="background:var(--bg3)"></div>
+    <div class="field" style="position:relative">
+      <label>Student</label>
+      <input id="f-sid-search" placeholder="Search student..." autocomplete="off"
+        value="${s ? s.name : ""}"
+        oninput="filterPayStudents()" onfocus="filterPayStudents()"
+        onblur="setTimeout(hidePayStudents,200)"
+        style="width:100%">
+      <input type="hidden" id="f-sid" value="${initialId || ""}">
+      <div id="pay-student-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg2);border:1px solid var(--border);border-radius:8px;z-index:300;max-height:200px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.25);margin-top:2px"></div>
+    </div>
+    <div class="field"><label>Program</label><select id="f-prog">${programOptions(s ? s.program : "")}</select></div>
   </div>
   <div class="form-row2 form-row2-wrap">
     <div class="field"><label>Amount</label><input id="f-amt" type="number" value="${s ? s.feeAmount : 0}" oninput="updateHint('pay-hint','f-amt','f-cur')"></div>
@@ -4982,6 +4991,30 @@
         if (ce && s.feeCurrency) ce.value = s.feeCurrency;
         if (pe && s.program) pe.value = s.program;
         updateHint("pay-hint", "f-amt", "f-cur");
+      }
+      function filterPayStudents() {
+        const q = (document.getElementById("f-sid-search").value || "").toLowerCase();
+        const dd = document.getElementById("pay-student-dd");
+        if (!dd) return;
+        const matches = DB.students.filter((s) => s.name.toLowerCase().includes(q));
+        dd.innerHTML = matches.length
+          ? matches.map((s) =>
+              `<div style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
+                onmousedown="selectPayStudent('${s.id}','${s.name.replace(/'/g, "&#39;")}')"
+              >${s.name}${s.program ? ` <span style="color:var(--text3);font-size:11px;margin-left:6px">${s.program}</span>` : ""}</div>`
+            ).join("")
+          : `<div style="padding:9px 12px;color:var(--text3);font-size:13px">No students found</div>`;
+        dd.style.display = "block";
+      }
+      function hidePayStudents() {
+        const dd = document.getElementById("pay-student-dd");
+        if (dd) dd.style.display = "none";
+      }
+      function selectPayStudent(id, name) {
+        document.getElementById("f-sid").value = id;
+        document.getElementById("f-sid-search").value = name;
+        hidePayStudents();
+        autoFillFee();
       }
 
       // ── ACCOUNT STATEMENT ────────────────────────────────────────
