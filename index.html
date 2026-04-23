@@ -5007,33 +5007,34 @@
         const nowAmt = parseFloat(v("f-amt")) || 0;
         const nowCur = v("f-cur") || cur;
         const nowInCur = cvt(nowAmt, nowCur, cur);
-        const afterTotal = totalPaid + nowInCur;
+        const balanceBefore = monthlyFee - totalPaid;
+        const balanceAfter = balanceBefore - nowInCur;
         const recent = [...prevPayments].sort((a, b) => (b.date > a.date ? 1 : -1)).slice(0, 5);
-        const balanceAfter = monthlyFee > 0 ? monthlyFee - afterTotal : null;
+        const r = (n) => Math.round(n * 100) / 100;
         el.innerHTML = `<div style="background:var(--bg3);border-radius:10px;padding:14px 16px;margin:8px 0 4px;font-size:13px">
   <div style="font-weight:600;color:var(--text1);margin-bottom:10px;font-size:13px">Payment summary</div>
   <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)">
-    <span style="color:var(--text2)">Monthly fee</span>
+    <span style="color:var(--text2)">Course fee</span>
     <span class="mono">${fmtOrig(monthlyFee, cur)}</span>
   </div>
   <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)">
-    <span style="color:var(--text2)">Total paid (${prevPayments.length} payment${prevPayments.length !== 1 ? "s" : ""})</span>
-    <span class="mono">${fmtOrig(Math.round(totalPaid * 100) / 100, cur)}</span>
+    <span style="color:var(--text2)">Already paid (${prevPayments.length} payment${prevPayments.length !== 1 ? "s" : ""})</span>
+    <span class="mono" style="color:var(--green)">${fmtOrig(r(totalPaid), cur)}</span>
+  </div>
+  <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)">
+    <span style="color:var(--text2)">Balance before this</span>
+    <span class="mono" style="color:${balanceBefore > 0 ? "var(--red)" : balanceBefore < 0 ? "var(--green)" : "var(--text2)"}">${fmtOrig(r(Math.abs(balanceBefore)), cur)}${balanceBefore < 0 ? " (overpaid)" : ""}</span>
   </div>
   <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)">
     <span style="color:var(--text2)">Now paying</span>
     <span class="mono" style="color:var(--accent)">${fmtOrig(nowAmt, nowCur)}</span>
   </div>
   <div style="display:flex;justify-content:space-between;padding:7px 0 3px;font-weight:600">
-    <span>Total after this</span>
-    <span class="mono">${fmtOrig(Math.round(afterTotal * 100) / 100, cur)}</span>
+    <span>Remaining balance</span>
+    <span class="mono" style="color:${balanceAfter > 0 ? "var(--red)" : balanceAfter < 0 ? "var(--green)" : "var(--accent)"}">${balanceAfter === 0 ? "Fully paid" : (balanceAfter < 0 ? "+" : "") + fmtOrig(r(Math.abs(balanceAfter)), cur) + (balanceAfter < 0 ? " overpaid" : " due")}</span>
   </div>
-  ${balanceAfter !== null ? `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px">
-    <span style="color:var(--text3)">Balance vs monthly fee</span>
-    <span class="mono" style="color:${balanceAfter > 0 ? "var(--red)" : balanceAfter < 0 ? "var(--green)" : "var(--text2)"}">${balanceAfter > 0 ? "-" : balanceAfter < 0 ? "+" : ""}${fmtOrig(Math.abs(Math.round(balanceAfter * 100) / 100), cur)}</span>
-  </div>` : ""}
   ${recent.length ? `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
-    <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px">Recent payments</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px">Payment history</div>
     ${recent.map((p) => `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:var(--text2)">
       <span>${p.date}${p.ref ? ` · <span style="color:var(--text3);font-family:var(--mono)">${p.ref}</span>` : ""}</span>
       <span class="mono">${fmtOrig(p.amount, p.currency)}</span>
