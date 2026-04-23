@@ -5715,6 +5715,21 @@
           const delim = lines[0] && lines[0].includes('\t') ? '\t' : ',';
           const rows = lines.map(l => l.split(delim).map(c => c.replace(/^["']|["']$/g,'')));
           content = `<div class="tbl-wrap" style="max-height:65vh;overflow-y:auto"><table><tr>${(rows[0]||[]).map(h=>`<th>${h}</th>`).join('')}</tr>${rows.slice(1).map(r=>`<tr>${r.map(c=>`<td style="font-size:12px">${c}</td>`).join('')}</tr>`).join('')}</table></div>`;
+        } else if (/\.(xlsx|xls|xlsm|xlsb)$/i.test(f.filename)) {
+          try {
+            const base64 = f.data.split(',')[1];
+            const wb = XLSX.read(base64, { type: 'base64' });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            const html = XLSX.utils.sheet_to_html(ws, { editable: false });
+            content = `<div style="max-height:65vh;overflow:auto;border:1px solid var(--border);border-radius:8px;font-size:12px">${html}</div>
+              <style>.xlsx-preview table{border-collapse:collapse;width:100%}.xlsx-preview td,.xlsx-preview th{border:1px solid var(--border);padding:4px 8px}</style>`;
+          } catch(e) {
+            content = `<div style="text-align:center;padding:40px">
+              <div style="font-size:40px;margin-bottom:12px">📄</div>
+              <div class="text2" style="margin-bottom:16px">Could not parse Excel file</div>
+              <a href="${f.data}" download="${f.filename}" class="btn btn-accent">Download file</a>
+            </div>`;
+          }
         } else {
           content = `<div style="text-align:center;padding:40px">
             <div style="font-size:40px;margin-bottom:12px">📄</div>
@@ -5926,5 +5941,6 @@
     </script>
     <!-- RECONCILIATION: hidden statement file input -->
     <input type="file" id="stmt-upload-input" accept=".csv,.txt,.xlsx,.xls" style="display:none" onchange="handleStatementUpload(this)">
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
   </body>
 </html>
