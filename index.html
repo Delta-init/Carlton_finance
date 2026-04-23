@@ -5600,18 +5600,28 @@
         const files = DB.reconFiles.filter(f=>f.accountId===RECON_ACCOUNT_ID).slice().sort((a,b)=>b.uploadDate>a.uploadDate?1:-1);
         const doneCount = files.filter(f=>f.done).length;
         const pendingCount = files.filter(f=>!f.done).length;
-        const filesHtml = files.length === 0
-          ? `<div class="upload-zone" onclick="triggerStatementUpload()"><div class="uz-icon">📄</div><div class="uz-title">No statements uploaded yet</div><div class="uz-sub">Click to upload a bank statement</div></div>`
+        const internalTxns = getAccountTransactions(RECON_ACCOUNT_ID);
+        const txnHtml = internalTxns.length === 0
+          ? `<div class="text3" style="padding:20px 0;font-size:13px">No transactions recorded for this account yet</div>`
           : `<div class="tbl-wrap"><table>
-              <tr><th>File name</th><th>Upload date</th><th>Status</th><th></th></tr>
+              <tr><th>Date</th><th>Type</th><th>Description</th><th style="text-align:right">Amount</th></tr>
+              ${internalTxns.map(t=>`<tr>
+                <td class="text2" style="white-space:nowrap">${dateStr(t.date)}</td>
+                <td>${t.typeBadge}</td>
+                <td style="font-size:12px;max-width:200px">${t.label}</td>
+                <td style="text-align:right" class="mono ${t.net>=0?'green':'red'}">${t.net>=0?'+':''}${fmtOrig(Math.abs(t.net),acc.currency)}</td>
+              </tr>`).join('')}
+            </table></div>`;
+        const stmtHtml = files.length === 0
+          ? `<div class="upload-zone" onclick="triggerStatementUpload()" style="margin:0"><div class="uz-icon">📄</div><div class="uz-title">No statements uploaded yet</div><div class="uz-sub">Click to upload</div></div>`
+          : `<div class="tbl-wrap"><table>
+              <tr><th>File name</th><th>Uploaded</th><th>Status</th><th></th></tr>
               ${files.map(f=>`<tr>
-                <td style="font-weight:500">${f.filename}</td>
-                <td class="text2">${dateStr(f.uploadDate)}</td>
-                <td>${f.done
-                  ? `<span class="badge b-green">Done · ${dateStr(f.doneDate)}</span>`
-                  : `<span class="badge b-amber">Pending</span>`}</td>
+                <td style="font-weight:500;font-size:12px">${f.filename}</td>
+                <td class="text2" style="white-space:nowrap">${dateStr(f.uploadDate)}</td>
+                <td>${f.done ? `<span class="badge b-green">Done · ${dateStr(f.doneDate)}</span>` : `<span class="badge b-amber">Pending</span>`}</td>
                 <td class="fl" style="gap:4px;justify-content:flex-end">
-                  ${!f.done && canEdit ? `<button class="btn btn-sm btn-accent" onclick="markReconDone('${f.id}')">✓ Reconciliation Done</button>` : ''}
+                  ${!f.done && canEdit ? `<button class="btn btn-sm btn-accent" onclick="markReconDone('${f.id}')">✓ Done</button>` : ''}
                   ${canEdit ? `<button class="btn btn-sm" style="color:var(--red)" onclick="deleteReconFile('${f.id}')">Remove</button>` : ''}
                 </td>
               </tr>`).join('')}
@@ -5619,14 +5629,24 @@
         return `<div class="recon-tabs">${tabsHtml}</div>
           <div class="recon-summary-bar">
             <div class="recon-stat"><div class="rs-lbl">Account</div><div class="rs-val" style="font-size:14px;color:var(--text)">${acc.name}</div></div>
-            <div class="recon-stat"><div class="rs-lbl">Total uploaded</div><div class="rs-val">${files.length}</div></div>
+            <div class="recon-stat"><div class="rs-lbl">Transactions</div><div class="rs-val">${internalTxns.length}</div></div>
+            <div class="recon-stat"><div class="rs-lbl">Statements uploaded</div><div class="rs-val">${files.length}</div></div>
             <div class="recon-stat"><div class="rs-lbl">Reconciled</div><div class="rs-val green">${doneCount}</div></div>
             <div class="recon-stat"><div class="rs-lbl">Pending</div><div class="rs-val ${pendingCount>0?'red':'text3'}">${pendingCount}</div></div>
           </div>
-          <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+          <div style="display:flex;gap:8px;margin-bottom:12px">
             <button class="btn btn-sm" onclick="triggerStatementUpload()">↑ Upload statement</button>
           </div>
-          ${filesHtml}`;
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+            <div class="card">
+              <div class="card-header"><div class="card-title">Internal transactions</div><span class="badge b-gray">${internalTxns.length}</span></div>
+              ${txnHtml}
+            </div>
+            <div class="card">
+              <div class="card-header"><div class="card-title">Uploaded statements</div><span class="badge b-gray">${files.length}</span></div>
+              ${stmtHtml}
+            </div>
+          </div>`;
       }
 
       function getAccountTransactions(accountId){
