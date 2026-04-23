@@ -5601,17 +5601,29 @@
         const doneCount = files.filter(f=>f.done).length;
         const pendingCount = files.filter(f=>!f.done).length;
         const internalTxns = getAccountTransactions(RECON_ACCOUNT_ID);
-        const txnHtml = internalTxns.length === 0
+        const txnByDate = {};
+        internalTxns.forEach(t=>{ if(!txnByDate[t.date]) txnByDate[t.date]=[]; txnByDate[t.date].push(t); });
+        const txnDates = Object.keys(txnByDate).sort().reverse();
+        const txnHtml = txnDates.length === 0
           ? `<div class="text3" style="padding:20px 0;font-size:13px">No transactions recorded for this account yet</div>`
-          : `<div class="tbl-wrap"><table>
-              <tr><th>Date</th><th>Type</th><th>Description</th><th style="text-align:right">Amount</th></tr>
-              ${internalTxns.map(t=>`<tr>
-                <td class="text2" style="white-space:nowrap">${dateStr(t.date)}</td>
-                <td>${t.typeBadge}</td>
-                <td style="font-size:12px;max-width:200px">${t.label}</td>
-                <td style="text-align:right" class="mono ${t.net>=0?'green':'red'}">${t.net>=0?'+':''}${fmtOrig(Math.abs(t.net),acc.currency)}</td>
-              </tr>`).join('')}
-            </table></div>`;
+          : txnDates.map(date=>{
+              const dayTxns = txnByDate[date];
+              const dayTotal = dayTxns.reduce((s,t)=>s+t.net,0);
+              return `<div style="margin-bottom:12px">
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);margin-bottom:4px">
+                  <span style="font-size:12px;font-weight:600;color:var(--text2)">${dateStr(date)}</span>
+                  <span class="mono" style="font-size:12px;color:${dayTotal>=0?'var(--green)':'var(--red)'}">${dayTotal>=0?'+':''}${fmtOrig(Math.round(Math.abs(dayTotal)*100)/100,acc.currency)}</span>
+                </div>
+                <div class="tbl-wrap"><table>
+                  <tr><th>Type</th><th>Description</th><th style="text-align:right">Amount</th></tr>
+                  ${dayTxns.map(t=>`<tr>
+                    <td>${t.typeBadge}</td>
+                    <td style="font-size:12px;max-width:220px">${t.label}</td>
+                    <td style="text-align:right" class="mono ${t.net>=0?'green':'red'}">${t.net>=0?'+':''}${fmtOrig(Math.abs(t.net),acc.currency)}</td>
+                  </tr>`).join('')}
+                </table></div>
+              </div>`;
+            }).join('');
         const stmtHtml = files.length === 0
           ? `<div class="upload-zone" onclick="triggerStatementUpload()" style="margin:0"><div class="uz-icon">📄</div><div class="uz-title">No statements uploaded yet</div><div class="uz-sub">Click to upload</div></div>`
           : `<div class="tbl-wrap"><table>
