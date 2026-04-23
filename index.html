@@ -5704,55 +5704,53 @@
         const isPdf = f.filename.toLowerCase().endsWith('.pdf') || (f.mimeType || '').includes('pdf');
         const isImg = /\.(png|jpg|jpeg|gif|webp)$/i.test(f.filename) || (f.mimeType || '').startsWith('image/');
         const isCsv = /\.(csv|txt|tsv)$/i.test(f.filename);
-        let content = '';
+        const isXlsx = /\.(xlsx|xls|xlsm|xlsb)$/i.test(f.filename);
+
+        const zoomBar = isPdf ? `
+          <button onclick="pdfZoom(-0.25)" style="background:rgba(255,255,255,.12);border:none;color:#fff;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:13px">− Zoom Out</button>
+          <span id="pdf-zoom-label" style="font-size:12px;color:rgba(255,255,255,.7);min-width:44px;text-align:center">150%</span>
+          <button onclick="pdfZoom(0.25)" style="background:rgba(255,255,255,.12);border:none;color:#fff;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:13px">+ Zoom In</button>
+          <button onclick="pdfZoom(0,'fit')" style="background:rgba(255,255,255,.12);border:none;color:#fff;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:13px">Fit</button>` : '';
+
+        let bodyHtml = '';
         if (isPdf) {
-          content = `
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-    <button class="btn btn-sm" onclick="pdfZoom(-0.25)">− Zoom Out</button>
-    <span id="pdf-zoom-label" style="font-size:12px;color:var(--text2);min-width:40px;text-align:center">150%</span>
-    <button class="btn btn-sm" onclick="pdfZoom(0.25)">+ Zoom In</button>
-    <button class="btn btn-sm" onclick="pdfZoom(0,'fit')">Fit</button>
-  </div>
-  <div id="pdf-render-area" style="max-height:65vh;overflow-y:auto;background:#525659;border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:10px"><div style="color:#fff;text-align:center;padding:20px">Loading PDF…</div></div>`;
+          bodyHtml = `<div id="pdf-render-area" style="flex:1;overflow-y:auto;background:#525659;padding:16px;display:flex;flex-direction:column;gap:12px;align-items:center"><div style="color:#fff;padding:40px">Loading PDF…</div></div>`;
         } else if (isImg) {
-          content = `<img src="${f.data}" style="max-width:100%;max-height:70vh;border-radius:8px;display:block;margin:0 auto">`;
+          bodyHtml = `<div style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;padding:24px;background:#1a1a1a"><img src="${f.data}" style="max-width:100%;max-height:100%;border-radius:8px;object-fit:contain"></div>`;
         } else if (isCsv) {
           const text = atob(f.data.split(',')[1] || '');
-          const lines = text.split(/\r?\n/).filter(l=>l.trim()).slice(0, 100);
+          const lines = text.split(/\r?\n/).filter(l=>l.trim()).slice(0, 200);
           const delim = lines[0] && lines[0].includes('\t') ? '\t' : ',';
           const rows = lines.map(l => l.split(delim).map(c => c.replace(/^["']|["']$/g,'')));
-          content = `<div class="tbl-wrap" style="max-height:65vh;overflow-y:auto"><table><tr>${(rows[0]||[]).map(h=>`<th>${h}</th>`).join('')}</tr>${rows.slice(1).map(r=>`<tr>${r.map(c=>`<td style="font-size:12px">${c}</td>`).join('')}</tr>`).join('')}</table></div>`;
-        } else if (/\.(xlsx|xls|xlsm|xlsb)$/i.test(f.filename)) {
+          bodyHtml = `<div style="flex:1;overflow:auto;padding:16px;background:var(--bg)"><div class="tbl-wrap"><table><tr>${(rows[0]||[]).map(h=>`<th>${h}</th>`).join('')}</tr>${rows.slice(1).map(r=>`<tr>${r.map(c=>`<td style="font-size:12px">${c}</td>`).join('')}</tr>`).join('')}</table></div></div>`;
+        } else if (isXlsx) {
           try {
             const base64 = f.data.split(',')[1];
             const wb = XLSX.read(base64, { type: 'base64' });
             const ws = wb.Sheets[wb.SheetNames[0]];
             const html = XLSX.utils.sheet_to_html(ws, { editable: false });
-            content = `<div style="max-height:65vh;overflow:auto;border:1px solid var(--border);border-radius:8px;font-size:12px">${html}</div>
-              <style>.xlsx-preview table{border-collapse:collapse;width:100%}.xlsx-preview td,.xlsx-preview th{border:1px solid var(--border);padding:4px 8px}</style>`;
+            bodyHtml = `<div style="flex:1;overflow:auto;padding:16px;background:var(--bg);font-size:12px">${html}</div>`;
           } catch(e) {
-            content = `<div style="text-align:center;padding:40px">
-              <div style="font-size:40px;margin-bottom:12px">📄</div>
-              <div class="text2" style="margin-bottom:16px">Could not parse Excel file</div>
-              <a href="${f.data}" download="${f.filename}" class="btn btn-accent">Download file</a>
-            </div>`;
+            bodyHtml = `<div style="flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px"><div style="font-size:40px">📄</div><div>Could not parse Excel file</div><a href="${f.data}" download="${f.filename}" class="btn btn-accent">Download file</a></div>`;
           }
         } else {
-          content = `<div style="text-align:center;padding:40px">
-            <div style="font-size:40px;margin-bottom:12px">📄</div>
-            <div style="font-weight:600;margin-bottom:8px">${f.filename}</div>
-            <div class="text2" style="margin-bottom:16px">Preview not available for this file type</div>
-            <a href="${f.data}" download="${f.filename}" class="btn btn-accent">Download file</a>
-          </div>`;
+          bodyHtml = `<div style="flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px"><div style="font-size:48px">📄</div><div style="font-weight:600">${f.filename}</div><a href="${f.data}" download="${f.filename}" class="btn btn-accent">Download file</a></div>`;
         }
-        openModal(`<div class="modal-title">${f.filename}</div>
-  <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-    <span class="text2" style="font-size:12px">Statement date: ${dateStr(f.statementDate || f.uploadDate)}</span>
-    <span class="text3" style="font-size:11px">· Uploaded ${dateStr(f.uploadDate)}</span>
-    <a href="${f.data}" download="${f.filename}" class="btn btn-sm" style="margin-left:auto">↓ Download</a>
-  </div>
-  ${content}
-  <div class="modal-actions"><button class="btn" onclick="closeModal()">Close</button></div>`);
+
+        const overlay = document.createElement('div');
+        overlay.id = 'recon-preview-overlay';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;background:var(--bg)';
+        overlay.innerHTML = `
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0">
+            <span style="font-weight:600;font-size:14px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.filename}</span>
+            <span style="font-size:11px;color:var(--text3)">${dateStr(f.statementDate || f.uploadDate)}</span>
+            ${zoomBar}
+            <a href="${f.data}" download="${f.filename}" class="btn btn-sm">↓ Download</a>
+            <button onclick="document.getElementById('recon-preview-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text2);padding:0 4px;line-height:1">✕</button>
+          </div>
+          ${bodyHtml}`;
+        document.body.appendChild(overlay);
+
         if (isPdf && f.data) {
           window._pdfScale = 1.5;
           window._pdfDoc = null;
@@ -5766,7 +5764,7 @@
               for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
               window._pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
               await renderPdfPages();
-            } catch(e) { area.innerHTML = `<div style="color:#f66;padding:20px;text-align:center">Failed to render PDF</div>`; }
+            } catch(e) { area.innerHTML = `<div style="color:#f66;padding:40px;text-align:center">Failed to render PDF</div>`; }
           }, 50);
         }
       }
