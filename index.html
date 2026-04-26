@@ -2982,6 +2982,7 @@
         return sp.commissionRate || 0;
       }
       function calcAndSaveCommissions(quot, payment) {
+        if (!quot || !payment) return;
         if (!DB.commissions) DB.commissions = [];
         // Pre-compute VAT-exclusive base amounts so commission is never on the tax portion
         const vatRate      = quot.vatEnabled ? (quot.vatRate || 0) : 0;
@@ -3029,7 +3030,7 @@
         const quot = (DB.quotations||[]).find(q=>q.id===qId);
         if (!quot) { toast('Quotation not found','amber'); return; }
         if (!quot.salespersonId) { toast('No salesperson assigned to this quotation','amber'); return; }
-        // Find the most recent payment linked to this quotation (by quotationId or by student)
+        // Find the first payment linked to this quotation (by quotationId or by student with no quot link)
         const payments = (DB.payments||[]).filter(p=>p.quotationId===qId||(p.studentId===quot.studentId&&!p.quotationId));
         if (!payments.length) { toast('No payment found for this quotation','amber'); return; }
         // Use the first payment as trigger (sorted by date asc)
