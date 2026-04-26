@@ -2305,7 +2305,7 @@
           transfers: () => openModal(modalAddTransfer()),
           students: () => openModal(modalAddStudent()),
           programs: () => openModal(modalAddProgram()),
-          quotations: () => { openModal(modalAddQuotation()); calcQuotTotal(); },
+          quotations: () => { openModal(modalAddQuotation()); autoVatByCurrency(); calcQuotTotal(); },
           payments: () => { openModal(modalAddPayment()); updatePaySummary(); },
           expenses: () => openModal(modalAddExpense()),
           payroll: () => openModal(modalAddStaff()),
@@ -2749,7 +2749,7 @@
       <td class="mono" style="font-size:12px">${q.quotationNo}</td>
       <td style="font-weight:500">${name}</td>
       <td class="text2">${q.program || "—"}</td>
-      <td class="mono">${fmtOrig(q.amount, q.currency)}</td>
+      <td class="mono">${fmtOrig(q.amount, q.currency)}${q.vatEnabled ? `<div style="font-size:10px;color:var(--accent);margin-top:2px">incl. VAT ${q.vatRate}%</div>` : ''}</td>
       <td class="mono" style="color:var(--green)">${fmtOrig(Math.round(paid * 100) / 100, q.currency)}</td>
       <td class="mono" style="color:${balance > 0 ? "var(--red)" : balance < 0 ? "var(--green)" : "var(--text2)"}">${balance === 0 ? "Settled" : fmtOrig(Math.abs(Math.round(balance * 100) / 100), q.currency) + (balance < 0 ? " cr" : "")}</td>
       <td class="text2">${dateStr(q.date)}</td>
@@ -2786,7 +2786,7 @@
   </div>
   <div class="form-row2 form-row2-wrap">
     <div class="field"><label>Unit Price</label><input id="qf-unit" type="number" min="0" value="${q ? (q.unitPrice ?? q.amount) : 0}" oninput="calcQuotTotal()"></div>
-    <div class="field"><label>Currency</label><select id="qf-cur" onchange="calcQuotTotal()">${curOptions(q ? q.currency : "AED")}</select></div>
+    <div class="field"><label>Currency</label><select id="qf-cur" onchange="autoVatByCurrency();calcQuotTotal()">${curOptions(q ? q.currency : "AED")}</select></div>
   </div>
   <div class="form-row2 form-row2-wrap">
     <div class="field"><label>Qty</label><input id="qf-qty" type="number" min="1" value="${q ? (q.qty ?? 1) : 1}" oninput="calcQuotTotal()"></div>
@@ -2800,6 +2800,21 @@
       </div>
     </div>
   </div>
+  <div class="form-row2 form-row2-wrap" style="margin-bottom:8px">
+    <div class="field" style="margin:0">
+      <label>VAT Treatment</label>
+      <select id="qf-vat-enabled" onchange="calcQuotTotal()" style="width:100%">
+        <option value="0"${!q || !q.vatEnabled ? ' selected' : ''}>No VAT</option>
+        <option value="1"${q && q.vatEnabled ? ' selected' : ''}>With VAT</option>
+      </select>
+    </div>
+    <div class="field" style="margin:0">
+      <label>VAT Rate (%)</label>
+      <input id="qf-vat-rate" type="number" min="0" max="100" step="0.01"
+        value="${q && q.vatRate != null ? q.vatRate : 5}"
+        oninput="calcQuotTotal()" style="width:100%">
+    </div>
+  </div>
   <div style="background:var(--bg3);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px">
     <div class="fl-sb" style="color:var(--text2)">
       <span>Subtotal (Unit × Qty)</span><span id="qf-subtotal" class="mono">—</span>
@@ -2807,8 +2822,14 @@
     <div class="fl-sb" style="color:var(--red);margin-top:4px">
       <span>Discount</span><span id="qf-disc-display" class="mono">—</span>
     </div>
+    <div class="fl-sb" style="color:var(--text2);margin-top:4px">
+      <span>Taxable Amount</span><span id="qf-taxable-display" class="mono">—</span>
+    </div>
+    <div class="fl-sb" style="color:var(--accent);margin-top:4px" id="qf-vat-row">
+      <span id="qf-vat-label">VAT (5%)</span><span id="qf-vat-display" class="mono">—</span>
+    </div>
     <div class="fl-sb" style="font-weight:700;font-size:15px;margin-top:6px;border-top:1px solid var(--border);padding-top:6px">
-      <span>Total Amount</span><span id="qf-total-display" class="mono accent">—</span>
+      <span>Grand Total</span><span id="qf-total-display" class="mono accent">—</span>
     </div>
   </div>
   <input type="hidden" id="qf-amt">
@@ -2838,19 +2859,36 @@
         if (dd) dd.style.display = "none";
       }
       function calcQuotTotal() {
-        const unit = parseFloat(document.getElementById("qf-unit")?.value) || 0;
-        const qty  = parseFloat(document.getElementById("qf-qty")?.value)  || 1;
-        const disc = parseFloat(document.getElementById("qf-disc")?.value) || 0;
-        const discType = document.getElementById("qf-disc-type")?.value || "flat";
-        const cur  = document.getElementById("qf-cur")?.value || "AED";
-        const subtotal = unit * qty;
-        const discAmt  = discType === "pct" ? subtotal * disc / 100 : disc;
-        const total    = Math.max(0, subtotal - discAmt);
+        const unit       = parseFloat(document.getElementById("qf-unit")?.value) || 0;
+        const qty        = parseFloat(document.getElementById("qf-qty")?.value)  || 1;
+        const disc       = parseFloat(document.getElementById("qf-disc")?.value) || 0;
+        const discType   = document.getElementById("qf-disc-type")?.value || "flat";
+        const cur        = document.getElementById("qf-cur")?.value || "AED";
+        const vatEnabled = document.getElementById("qf-vat-enabled")?.value === "1";
+        const vatRate    = parseFloat(document.getElementById("qf-vat-rate")?.value) || 0;
+        const subtotal   = unit * qty;
+        const discAmt    = discType === "pct" ? subtotal * disc / 100 : disc;
+        const taxable    = Math.max(0, subtotal - discAmt);
+        const vatAmt     = vatEnabled ? Math.round(taxable * vatRate) / 100 : 0;
+        const total      = Math.round((taxable + vatAmt) * 100) / 100;
         const el = id => document.getElementById(id);
-        if (el("qf-subtotal"))     el("qf-subtotal").textContent     = fmtOrig(subtotal, cur);
-        if (el("qf-disc-display")) el("qf-disc-display").textContent = discAmt > 0 ? `-${fmtOrig(discAmt, cur)}` : "—";
-        if (el("qf-total-display"))el("qf-total-display").textContent = fmtOrig(total, cur);
-        if (el("qf-amt"))          el("qf-amt").value = total;
+        if (el("qf-subtotal"))      el("qf-subtotal").textContent      = fmtOrig(subtotal, cur);
+        if (el("qf-disc-display"))  el("qf-disc-display").textContent  = discAmt > 0 ? `-${fmtOrig(discAmt, cur)}` : "—";
+        if (el("qf-taxable-display")) el("qf-taxable-display").textContent = fmtOrig(taxable, cur);
+        if (el("qf-vat-row"))       el("qf-vat-row").style.display     = vatEnabled ? "flex" : "none";
+        if (el("qf-vat-label"))     el("qf-vat-label").textContent     = `VAT (${vatRate}%)`;
+        if (el("qf-vat-display"))   el("qf-vat-display").textContent   = `+${fmtOrig(vatAmt, cur)}`;
+        if (el("qf-total-display")) el("qf-total-display").textContent = fmtOrig(total, cur);
+        if (el("qf-amt"))           el("qf-amt").value = total;
+      }
+      function autoVatByCurrency() {
+        const cur = document.getElementById("qf-cur")?.value || "";
+        const vatEl  = document.getElementById("qf-vat-enabled");
+        const rateEl = document.getElementById("qf-vat-rate");
+        if (!vatEl || !rateEl) return;
+        // UAE AED → default 5% VAT; others → no VAT
+        if (cur === "AED") { vatEl.value = "1"; rateEl.value = 5; }
+        else               { vatEl.value = "0"; rateEl.value = 0; }
       }
       function selectQuotStudent(id, name, program, fee, cur) {
         document.getElementById("qf-sid").value = id;
@@ -2884,9 +2922,13 @@
         const discount = parseFloat(document.getElementById("qf-disc")?.value) || 0;
         const discountType = document.getElementById("qf-disc-type")?.value || "flat";
         const currency = v("qf-cur");
+        const vatEnabled = document.getElementById("qf-vat-enabled")?.value === "1";
+        const vatRate = parseFloat(document.getElementById("qf-vat-rate")?.value) || 0;
         const subtotal = unitPrice * qty;
         const discAmt = discountType === "pct" ? subtotal * discount / 100 : discount;
-        const amount = Math.max(0, Math.round((subtotal - discAmt) * 100) / 100);
+        const taxable = Math.max(0, subtotal - discAmt);
+        const vatAmount = vatEnabled ? Math.round(taxable * vatRate) / 100 : 0;
+        const amount = Math.round((taxable + vatAmount) * 100) / 100;
         const date = v("qf-date");
         const validUntil = v("qf-valid");
         const dueDate = document.getElementById("qf-due")?.value || null;
@@ -2896,9 +2938,9 @@
         if (!DB.quotations) DB.quotations = [];
         if (id) {
           const q = DB.quotations.find(x => x.id === id);
-          if (q) Object.assign(q, { studentId, studentName, program, unitPrice, qty, discount, discountType, amount, currency, date, validUntil, dueDate, notes });
+          if (q) Object.assign(q, { studentId, studentName, program, unitPrice, qty, discount, discountType, vatEnabled, vatRate, vatAmount, amount, currency, date, validUntil, dueDate, notes });
         } else {
-          DB.quotations.push({ id: uid(), quotationNo: nextQuotationNo(), studentId, studentName, program, unitPrice, qty, discount, discountType, amount, currency, date, validUntil, dueDate, notes, status: "draft", paymentId: null });
+          DB.quotations.push({ id: uid(), quotationNo: nextQuotationNo(), studentId, studentName, program, unitPrice, qty, discount, discountType, vatEnabled, vatRate, vatAmount, amount, currency, date, validUntil, dueDate, notes, status: "draft", paymentId: null });
         }
         logActivity("quotation", `${id ? "Updated" : "Created"} quotation for ${studentName}`);
         saveDB(); closeModal(); renderCurrentPage();
@@ -5400,6 +5442,16 @@
     <span style="color:var(--text2)">Now paying</span>
     <span class="mono" style="color:var(--accent)">${fmtOrig(nowAmt, nowCur)}</span>
   </div>
+  ${q && q.vatEnabled && nowAmt > 0 ? (() => {
+    const nowInQ = cvt(nowAmt, nowCur, cur);
+    const vatPortion = Math.round(nowInQ * q.vatRate / (100 + q.vatRate) * 100) / 100;
+    const netPortion = Math.round((nowInQ - vatPortion) * 100) / 100;
+    return `<div style="background:rgba(26,158,158,.08);border-radius:6px;padding:7px 10px;margin:4px 0;font-size:12px">
+    <div style="color:var(--text3);margin-bottom:4px;font-size:11px;text-transform:uppercase;letter-spacing:.4px">VAT breakdown (${q.vatRate}%)</div>
+    <div style="display:flex;justify-content:space-between;padding:2px 0"><span style="color:var(--text2)">Net (excl. VAT)</span><span class="mono">${fmtOrig(netPortion, cur)}</span></div>
+    <div style="display:flex;justify-content:space-between;padding:2px 0"><span style="color:var(--accent)">VAT (${q.vatRate}%)</span><span class="mono" style="color:var(--accent)">${fmtOrig(vatPortion, cur)}</span></div>
+  </div>`;
+  })() : ""}
   <div style="display:flex;justify-content:space-between;padding:7px 0 3px;font-weight:600">
     <span>Remaining balance</span>
     <span class="mono" style="color:${balanceAfter > 0 ? "var(--red)" : balanceAfter < 0 ? "var(--green)" : "var(--accent)"}">${balanceAfter === 0 ? "Fully paid" : (balanceAfter < 0 ? "+" : "") + fmtOrig(r(Math.abs(balanceAfter)), cur) + (balanceAfter < 0 ? " overpaid" : " due")}</span>
