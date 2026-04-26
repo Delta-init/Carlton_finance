@@ -2816,6 +2816,7 @@
     <div class="field"><label>Quotation date</label><input id="qf-date" type="date" value="${q ? q.date : today()}"></div>
     <div class="field"><label>Valid until</label><input id="qf-valid" type="date" value="${q ? q.validUntil : validDefault}"></div>
   </div>
+  <div class="field"><label>Payment due date <span style="color:var(--text3);font-weight:400">(for reminders)</span></label><input id="qf-due" type="date" value="${q ? (q.dueDate || '') : ''}"></div>
   <div class="field"><label>Notes</label><textarea id="qf-notes" rows="2" placeholder="Terms, conditions, notes..." style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);resize:vertical;font-size:13px">${q ? (q.notes || "") : ""}</textarea></div>
   <div class="modal-actions">
     <button class="btn" onclick="closeModal()">Cancel</button>
@@ -2888,15 +2889,16 @@
         const amount = Math.max(0, Math.round((subtotal - discAmt) * 100) / 100);
         const date = v("qf-date");
         const validUntil = v("qf-valid");
+        const dueDate = document.getElementById("qf-due")?.value || null;
         const notes = document.getElementById("qf-notes") ? document.getElementById("qf-notes").value : "";
         if (!studentName && !studentId) { toast("Student name required", "amber"); return; }
         if (!amount) { toast("Amount required", "amber"); return; }
         if (!DB.quotations) DB.quotations = [];
         if (id) {
           const q = DB.quotations.find(x => x.id === id);
-          if (q) Object.assign(q, { studentId, studentName, program, unitPrice, qty, discount, discountType, amount, currency, date, validUntil, notes });
+          if (q) Object.assign(q, { studentId, studentName, program, unitPrice, qty, discount, discountType, amount, currency, date, validUntil, dueDate, notes });
         } else {
-          DB.quotations.push({ id: uid(), quotationNo: nextQuotationNo(), studentId, studentName, program, unitPrice, qty, discount, discountType, amount, currency, date, validUntil, notes, status: "draft", paymentId: null });
+          DB.quotations.push({ id: uid(), quotationNo: nextQuotationNo(), studentId, studentName, program, unitPrice, qty, discount, discountType, amount, currency, date, validUntil, dueDate, notes, status: "draft", paymentId: null });
         }
         logActivity("quotation", `${id ? "Updated" : "Created"} quotation for ${studentName}`);
         saveDB(); closeModal(); renderCurrentPage();
@@ -3135,29 +3137,83 @@
       // ── PAGE: REMINDERS ──────────────────────────────────────────
       function reminders() {
         const overdue = overdueStudents();
-        return `<div class="metrics m2">
+        const todayStr = today();
+        const soon = new Date(); soon.setDate(soon.getDate() + 7);
+        const soonStr = soon.toISOString().slice(0,10);
+
+        // Quotation payment reminders: balance > 0, dueDate set, overdue or due within 7 days
+        const quotReminders = (DB.quotations || [])
+          .filter(q => q.dueDate && (q.status === 'accepted' || q.status === 'converted'))
+          .map(q => {
+            const paid = (DB.payments||[]).filter(p => p.quotationId ? p.quotationId===q.id : p.studentId===q.studentId).reduce((s,p) => s+cvt(p.amount,p.currency,q.currency),0);
+            const balance = Math.round((q.amount - paid)*100)/100;
+            return { q, balance, paid };
+          })
+          .filter(({ balance }) => balance > 0)
+          .filter(({ q }) => q.dueDate <= soonStr)
+          .sort((a,b) => a.q.dueDate > b.q.dueDate ? 1 : -1);
+
+        const overdueQuots  = quotReminders.filter(({ q }) => q.dueDate < todayStr);
+        const upcomingQuots = quotReminders.filter(({ q }) => q.dueDate >= todayStr);
+
+        return `<div class="metrics m4">
+    <div class="metric"><div class="metric-label">Overdue quotations</div><div class="metric-value red">${overdueQuots.length}</div></div>
+    <div class="metric"><div class="metric-label">Due within 7 days</div><div class="metric-value amber">${upcomingQuots.length}</div></div>
     <div class="metric"><div class="metric-label">Overdue students</div><div class="metric-value red">${overdue.length}</div></div>
-    <div class="metric"><div class="metric-label">Outstanding amount</div><div class="metric-value red">${fmt(overdue.reduce((s, st) => s + toUSD(st.feeAmount, st.feeCurrency), 0))}</div></div>
+    <div class="metric"><div class="metric-label">Outstanding (students)</div><div class="metric-value red">${fmt(overdue.reduce((s, st) => s + toUSD(st.feeAmount, st.feeCurrency), 0))}</div></div>
   </div>
+
+  ${quotReminders.length > 0 ? `
+  <div class="card" style="margin-bottom:12px">
+    <div class="card-header"><div class="card-title">💳 Payment Due Reminders</div><span class="badge b-red">${quotReminders.length} pending</span></div>
+    ${quotReminders.map(({ q, balance, paid }) => {
+      const st = q.studentId ? getStudent(q.studentId) : null;
+      const name = st ? st.name : (q.studentName || '—');
+      const isOverdue = q.dueDate < todayStr;
+      const daysNum = Math.round((new Date(q.dueDate) - new Date(todayStr)) / 86400000);
+      const daysLabel = isOverdue
+        ? `<span class="badge b-red">${Math.abs(daysNum)} day${Math.abs(daysNum)!==1?'s':''} overdue</span>`
+        : `<span class="badge b-amber">Due in ${daysNum} day${daysNum!==1?'s':''}</span>`;
+      return `<div style="padding:14px 0;border-bottom:1px solid var(--border)">
+        <div class="fl-sb" style="flex-wrap:wrap;gap:8px">
+          <div class="fl" style="align-items:flex-start">
+            <div class="ic ic-orange" style="width:38px;height:38px;font-size:10px;flex-shrink:0">${initials(name)}</div>
+            <div>
+              <div style="font-weight:600;font-size:14px">${name}</div>
+              <div class="text3" style="font-size:11px;margin-top:2px"><span class="mono">${q.quotationNo}</span>${q.program ? ' · '+q.program : ''}</div>
+              <div style="font-size:12px;margin-top:6px;display:flex;gap:14px;flex-wrap:wrap">
+                <span>Total: <span class="mono">${fmtOrig(q.amount, q.currency)}</span></span>
+                <span style="color:var(--green)">Paid: <span class="mono">${fmtOrig(Math.round(paid*100)/100, q.currency)}</span></span>
+                <span style="color:var(--red);font-weight:600">Balance: <span class="mono">${fmtOrig(balance, q.currency)}</span></span>
+              </div>
+              <div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                ${daysLabel}
+                <span class="text3" style="font-size:11px">Due: ${dateStr(q.dueDate)}</span>
+              </div>
+            </div>
+          </div>
+          <div class="fl" style="gap:6px;align-items:flex-start;padding-top:4px">
+            ${perm("canCreate") ? `<button class="btn btn-sm btn-accent" onclick="convertQuotation('${q.id}')">+ Record Payment</button>` : ""}
+          </div>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`
+  : `<div class="card" style="margin-bottom:12px"><div style="padding:16px;text-align:center;color:var(--green);font-size:14px">✓ No payment dues in the next 7 days</div></div>`}
+
   <div class="card">
     <div class="card-header"><div class="card-title">Unpaid students</div></div>
     ${
       overdue.length === 0
         ? `<div class="empty"><div class="empty-icon">✓</div><div class="empty-text" style="color:var(--green)">All students are paid up!</div></div>`
-        : overdue
-            .map(
-              (
-                s,
-              ) => `<div class="fl-sb" style="padding:12px 0;border-bottom:1px solid var(--border)">
+        : overdue.map(s => `<div class="fl-sb" style="padding:12px 0;border-bottom:1px solid var(--border)">
       <div class="fl"><div class="ic ic-orange" style="width:34px;height:34px;font-size:10px">${initials(s.name)}</div>
         <div><div style="font-weight:500">${s.name}</div><div class="text3" style="font-size:11px">${s.program}·Fee:${fmtOrig(s.feeAmount, s.feeCurrency)}</div></div></div>
       <div class="fl" style="gap:6px">
         <button class="btn btn-sm" onclick="copyReminder('${s.id}')">📋 Copy message</button>
         ${perm("canCreate") ? `<button class="btn btn-sm btn-accent" onclick="openModal(modalAddPayment('${s.id}'));updatePaySummary()">Record payment</button>` : ""}
       </div>
-    </div>`,
-            )
-            .join("")
+    </div>`).join("")
     }
   </div>`;
       }
