@@ -3154,22 +3154,98 @@
         toast(id?'Salesperson updated':'Salesperson added');
       }
       let _cf = { spId:'', dateFrom:'', dateTo:'', paid:'' };
+      let _commExpanded = {};
       function commissionPage() {
         if (!DB.commissions) DB.commissions = [];
         if (!DB.salespeople) DB.salespeople = [];
         const fl = _cf;
+        const canEdit = perm('canEdit');
+        // Apply filters to commission records
         let cs = DB.commissions.slice().sort((a,b)=>b.date>a.date?1:-1);
-        if (fl.spId)    cs = cs.filter(c=>c.salespersonId===fl.spId);
-        if (fl.dateFrom)cs = cs.filter(c=>c.date>=fl.dateFrom);
-        if (fl.dateTo)  cs = cs.filter(c=>c.date<=fl.dateTo);
-        if (fl.paid==='paid')    cs = cs.filter(c=>c.paid);
-        if (fl.paid==='unpaid')  cs = cs.filter(c=>!c.paid);
+        if (fl.spId)     cs = cs.filter(c=>c.salespersonId===fl.spId);
+        if (fl.dateFrom) cs = cs.filter(c=>c.date>=fl.dateFrom);
+        if (fl.dateTo)   cs = cs.filter(c=>c.date<=fl.dateTo);
+        if (fl.paid==='paid')   cs = cs.filter(c=>c.paid);
+        if (fl.paid==='unpaid') cs = cs.filter(c=>!c.paid);
         const hasFilter = fl.spId||fl.dateFrom||fl.dateTo||fl.paid;
-        const totalComm  = DB.commissions.reduce((s,c)=>s+toUSD(c.commissionAmount,c.currency),0);
-        const paidComm   = DB.commissions.filter(c=>c.paid).reduce((s,c)=>s+toUSD(c.commissionAmount,c.currency),0);
+        // Overall metrics (always unfiltered)
+        const totalComm = DB.commissions.reduce((s,c)=>s+toUSD(c.commissionAmount,c.currency),0);
+        const paidComm  = DB.commissions.filter(c=>c.paid).reduce((s,c)=>s+toUSD(c.commissionAmount,c.currency),0);
         const unpaidComm = totalComm - paidComm;
         const spOpts = `<option value="">All salespeople</option>`+(DB.salespeople||[]).map(s=>`<option value="${s.id}"${fl.spId===s.id?' selected':''}>${s.name}</option>`).join('');
-        const canEdit = perm('canEdit');
+        // Group filtered records by salesperson
+        const spIds = [...new Set(cs.map(c=>c.salespersonId))];
+        const spCards = spIds.length===0
+          ? `<div class="card"><div class="empty"><div class="empty-icon">💰</div><div class="empty-text">${hasFilter?'No records match filters':'No commissions yet — assign salespeople to quotations'}</div></div></div>`
+          : spIds.map(spId=>{
+              const sp = getSalesperson(spId);
+              const spComms = cs.filter(c=>c.salespersonId===spId);
+              const spTotal  = spComms.reduce((s,c)=>s+toUSD(c.commissionAmount,c.currency),0);
+              const spPaid   = spComms.filter(c=>c.paid).reduce((s,c)=>s+toUSD(c.commissionAmount,c.currency),0);
+              const spPartial= spComms.filter(c=>!c.paid&&(c.paidAmount||0)>0).reduce((s,c)=>s+toUSD(c.paidAmount||0,c.currency),0);
+              const spUnpaid = spTotal - spPaid;
+              const minLevel = Math.min(...spComms.map(c=>c.level));
+              const lvlBadge = minLevel===1?'<span class="badge b-green">L1 Direct</span>':minLevel===2?'<span class="badge b-blue">L2 Manager</span>':'<span class="badge b-gray">L3 Senior</span>';
+              const isExpanded = !!_commExpanded[spId];
+              const initial = (sp.name||'?')[0].toUpperCase();
+              // History detail table (shown when expanded)
+              const historyHtml = isExpanded ? `
+                <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
+                  <div class="tbl-wrap"><table>
+                    <tr><th>Date</th><th>Quotation</th><th>Base</th><th>Basis</th><th>Rate</th><th>Commission</th><th>Status</th><th></th></tr>
+                    ${spComms.map(c=>{
+                      const quot=(DB.quotations||[]).find(q=>q.id===c.quotationId);
+                      const statusHtml=(()=>{
+                        const p=c.paidAmount||0;
+                        if(c.paid) return `<span class="badge b-green">Paid · ${dateStr(c.paidDate)}</span>`;
+                        if(p>0){ const rem=Math.round((c.commissionAmount-p)*100)/100; return `<span class="badge b-blue">Partial · ${fmtOrig(p,c.currency)} paid</span><br><span style="font-size:11px;color:var(--text3)">Rem: ${fmtOrig(rem,c.currency)}</span>`; }
+                        return `<span class="badge b-amber">Unpaid</span>`;
+                      })();
+                      return `<tr>
+                        <td class="mono text3">${dateStr(c.date)}</td>
+                        <td class="mono" style="font-size:11px">${quot?`<span class="badge b-blue" style="font-size:10px">${quot.quotationNo}</span>`:'—'}</td>
+                        <td class="mono">${fmtOrig(c.baseAmount,c.currency)}</td>
+                        <td>${c.basis==='quotation'?'<span class="badge b-green" style="font-size:10px">Quotation</span>':'<span class="badge b-gray" style="font-size:10px">Payment</span>'}</td>
+                        <td class="mono">${c.rate}%</td>
+                        <td class="mono" style="color:var(--accent);font-weight:600">${fmtOrig(c.commissionAmount,c.currency)}</td>
+                        <td>${statusHtml}</td>
+                        <td>${canEdit&&!c.paid?`<button class="btn btn-sm" onclick="markCommissionPaid('${c.id}')">✓ ${(c.paidAmount||0)>0?'Pay More':'Mark Paid'}</button>`:''}</td>
+                      </tr>`;
+                    }).join('')}
+                  </table></div>
+                </div>` : '';
+              return `<div class="card" style="margin-bottom:12px">
+                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+                  <div style="display:flex;align-items:center;gap:12px;cursor:pointer" onclick="_commExpanded['${spId}']=!_commExpanded['${spId}'];renderCurrentPage()">
+                    <div style="width:42px;height:42px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:17px;flex-shrink:0">${initial}</div>
+                    <div>
+                      <div style="font-weight:700;font-size:15px">${sp.name}</div>
+                      <div style="margin-top:3px">${lvlBadge}</div>
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:center">
+                    <div style="text-align:right">
+                      <div style="font-size:10px;color:var(--text3);letter-spacing:.5px;margin-bottom:2px">TOTAL</div>
+                      <div style="font-weight:700;font-size:15px;color:var(--accent)">${fmt(spTotal)}</div>
+                    </div>
+                    <div style="text-align:right">
+                      <div style="font-size:10px;color:var(--text3);letter-spacing:.5px;margin-bottom:2px">PAID</div>
+                      <div style="font-weight:700;font-size:15px;color:var(--green)">${fmt(spPaid)}</div>
+                    </div>
+                    <div style="text-align:right">
+                      <div style="font-size:10px;color:var(--text3);letter-spacing:.5px;margin-bottom:2px">UNPAID</div>
+                      <div style="font-weight:700;font-size:15px;color:var(--red)">${fmt(spUnpaid)}</div>
+                    </div>
+                    ${spPartial>0?`<div style="text-align:right">
+                      <div style="font-size:10px;color:var(--text3);letter-spacing:.5px;margin-bottom:2px">PARTIAL</div>
+                      <div style="font-weight:700;font-size:15px;color:var(--blue,#4a9eff)">${fmt(spPartial)}</div>
+                    </div>`:''}
+                    <button class="btn btn-sm" style="min-width:100px" onclick="_commExpanded['${spId}']=!_commExpanded['${spId}'];renderCurrentPage()">${isExpanded?'▲ Hide':'▼ History'} (${spComms.length})</button>
+                  </div>
+                </div>
+                ${historyHtml}
+              </div>`;
+            }).join('');
         return `<div class="metrics m3">
   <div class="metric"><div class="metric-label">Total commission</div><div class="metric-value accent">${fmt(totalComm)}</div></div>
   <div class="metric"><div class="metric-label">Paid</div><div class="metric-value green">${fmt(paidComm)}</div></div>
@@ -3193,38 +3269,7 @@
     </select></div>
   </div>
 </div>
-<div class="card">
-  <div class="card-header"><div class="card-title">Commission Records <span class="text3" style="font-size:12px;font-weight:400">(${cs.length})</span></div></div>
-  ${cs.length===0?`<div class="empty"><div class="empty-icon">💰</div><div class="empty-text">${hasFilter?'No records match filters':'No commissions yet — assign salespeople to quotations'}</div></div>`:`
-  <div class="tbl-wrap"><table>
-    <tr><th>Date</th><th>Salesperson</th><th>Level</th><th>Quotation</th><th>Base</th><th>Basis</th><th>Rate</th><th>Commission</th><th>Status</th><th></th></tr>
-    ${cs.map(c=>{
-      const sp   = getSalesperson(c.salespersonId);
-      const quot = (DB.quotations||[]).find(q=>q.id===c.quotationId);
-      const lvlBadge = c.level===1?'<span class="badge b-green">L1 Direct</span>':c.level===2?'<span class="badge b-blue">L2 Manager</span>':'<span class="badge b-gray">L3 Senior</span>';
-      return `<tr>
-        <td class="mono text3">${dateStr(c.date)}</td>
-        <td style="font-weight:600">${sp.name}</td>
-        <td>${lvlBadge}</td>
-        <td class="mono" style="font-size:11px">${quot?quot.quotationNo:'—'}</td>
-        <td class="mono">${fmtOrig(c.baseAmount,c.currency)}</td>
-        <td>${c.basis==='quotation'?'<span class="badge b-green" style="font-size:10px">Quotation</span>':'<span class="badge b-gray" style="font-size:10px">Payment</span>'}</td>
-        <td class="mono">${c.rate}%</td>
-        <td class="mono" style="color:var(--accent);font-weight:600">${fmtOrig(c.commissionAmount,c.currency)}</td>
-        <td>${(()=>{
-          const paid=c.paidAmount||0;
-          if(c.paid) return `<span class="badge b-green">Paid · ${dateStr(c.paidDate)}</span>`;
-          if(paid>0){
-            const rem=Math.round((c.commissionAmount-paid)*100)/100;
-            return `<span class="badge b-blue">Partial · ${fmtOrig(paid,c.currency)} paid</span><br><span style="font-size:11px;color:var(--text3)">Rem: ${fmtOrig(rem,c.currency)}</span>`;
-          }
-          return `<span class="badge b-amber">Unpaid</span>`;
-        })()}</td>
-        <td>${canEdit&&!c.paid?`<button class="btn btn-sm" onclick="markCommissionPaid('${c.id}')">✓ ${(c.paidAmount||0)>0?'Pay More':'Mark Paid'}</button>`:''}</td>
-      </tr>`;
-    }).join('')}
-  </table></div>`}
-</div>`;
+${spCards}`;
       }
       function markCommissionPaid(id) {
         const c = (DB.commissions||[]).find(x=>x.id===id);
