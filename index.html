@@ -2983,6 +2983,16 @@
       }
       function calcAndSaveCommissions(quot, payment) {
         if (!DB.commissions) DB.commissions = [];
+        // Pre-compute VAT-exclusive base amounts so commission is never on the tax portion
+        const vatRate      = quot.vatEnabled ? (quot.vatRate || 0) : 0;
+        // Per-quotation base: total minus stored VAT amount
+        const quotBaseAmt  = quot.vatEnabled
+          ? Math.round((quot.amount - (quot.vatAmount || 0)) * 100) / 100
+          : quot.amount;
+        // Per-payment base: reverse-extract VAT from payment amount (payment.amount may include VAT)
+        const payBaseAmt   = vatRate > 0
+          ? Math.round(payment.amount * 100 / (100 + vatRate) * 100) / 100
+          : payment.amount;
         let spId = quot.salespersonId;
         let level = 1;
         while (spId && level <= 3) {
@@ -2990,15 +3000,15 @@
           if (!sp.id) break;
           let baseAmt, currency, basis;
           if (sp.commissionType === 'per_quotation') {
-            // Commission on full quotation amount — only once per quotation+salesperson
+            // Commission on full quotation amount (excl. VAT) — only once per quotation+salesperson
             const already = DB.commissions.find(c => c.quotationId === quot.id && c.salespersonId === spId);
             if (already) { spId = sp.managerId || null; level++; continue; }
-            baseAmt  = quot.amount;
+            baseAmt  = quotBaseAmt;
             currency = quot.currency;
             basis    = 'quotation';
           } else {
-            // per_payment (flat or tier) — once per payment
-            baseAmt  = payment.amount;
+            // per_payment (flat or tier) — payment amount excl. VAT
+            baseAmt  = payBaseAmt;
             currency = payment.currency;
             basis    = 'payment';
           }
