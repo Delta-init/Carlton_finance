@@ -2305,7 +2305,7 @@
           transfers: () => openModal(modalAddTransfer()),
           students: () => openModal(modalAddStudent()),
           programs: () => openModal(modalAddProgram()),
-          quotations: () => openModal(modalAddQuotation()),
+          quotations: () => { openModal(modalAddQuotation()); calcQuotTotal(); },
           payments: () => { openModal(modalAddPayment()); updatePaySummary(); },
           expenses: () => openModal(modalAddExpense()),
           payroll: () => openModal(modalAddStaff()),
@@ -2737,7 +2737,7 @@
         ${canEdit && q.status === "sent" ? `<button class="btn btn-sm" onclick="setQuotationStatus('${q.id}','accepted')">Accept</button>` : ""}
         ${canCreate && (q.status === "accepted" || q.status === "sent") ? `<button class="btn btn-sm btn-accent" onclick="convertQuotation('${q.id}')">Convert to Payment</button>` : ""}
         ${canCreate && q.status === "converted" && balance > 0 && q.studentId ? `<button class="btn btn-sm btn-accent" onclick="convertQuotation('${q.id}')">+ Record Payment</button>` : ""}
-        ${canEdit && q.status !== "converted" && q.status !== "cancelled" ? `<button class="btn btn-sm" onclick="openModal(modalAddQuotation('${q.id}'))">Edit</button>` : ""}
+        ${canEdit && q.status !== "converted" && q.status !== "cancelled" ? `<button class="btn btn-sm" onclick="openModal(modalAddQuotation('${q.id}'));calcQuotTotal()">Edit</button>` : ""}
         ${canEdit && q.status !== "converted" && q.status !== "cancelled" ? `<button class="btn btn-sm" style="color:var(--red)" onclick="setQuotationStatus('${q.id}','cancelled')">Cancel</button>` : ""}
       </td>
     </tr>`;
@@ -2762,9 +2762,33 @@
     <div class="field"><label>Program</label><select id="qf-prog">${programOptions(q ? q.program : "")}</select></div>
   </div>
   <div class="form-row2 form-row2-wrap">
-    <div class="field"><label>Amount</label><input id="qf-amt" type="number" value="${q ? q.amount : 0}" oninput="autoFillQuotFee()"></div>
-    <div class="field"><label>Currency</label><select id="qf-cur">${curOptions(q ? q.currency : "AED")}</select></div>
+    <div class="field"><label>Unit Price</label><input id="qf-unit" type="number" min="0" value="${q ? (q.unitPrice ?? q.amount) : 0}" oninput="calcQuotTotal()"></div>
+    <div class="field"><label>Currency</label><select id="qf-cur" onchange="calcQuotTotal()">${curOptions(q ? q.currency : "AED")}</select></div>
   </div>
+  <div class="form-row2 form-row2-wrap">
+    <div class="field"><label>Qty</label><input id="qf-qty" type="number" min="1" value="${q ? (q.qty ?? 1) : 1}" oninput="calcQuotTotal()"></div>
+    <div class="field"><label>Discount</label>
+      <div class="fl" style="gap:6px">
+        <input id="qf-disc" type="number" min="0" value="${q ? (q.discount ?? 0) : 0}" oninput="calcQuotTotal()" style="flex:1">
+        <select id="qf-disc-type" onchange="calcQuotTotal()" style="width:60px">
+          <option value="flat"${!q || q.discountType !== 'pct' ? ' selected' : ''}>Flat</option>
+          <option value="pct"${q && q.discountType === 'pct' ? ' selected' : ''}>%</option>
+        </select>
+      </div>
+    </div>
+  </div>
+  <div style="background:var(--bg3);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px">
+    <div class="fl-sb" style="color:var(--text2)">
+      <span>Subtotal (Unit × Qty)</span><span id="qf-subtotal" class="mono">—</span>
+    </div>
+    <div class="fl-sb" style="color:var(--red);margin-top:4px">
+      <span>Discount</span><span id="qf-disc-display" class="mono">—</span>
+    </div>
+    <div class="fl-sb" style="font-weight:700;font-size:15px;margin-top:6px;border-top:1px solid var(--border);padding-top:6px">
+      <span>Total Amount</span><span id="qf-total-display" class="mono accent">—</span>
+    </div>
+  </div>
+  <input type="hidden" id="qf-amt">
   <div class="form-row2 form-row2-wrap">
     <div class="field"><label>Quotation date</label><input id="qf-date" type="date" value="${q ? q.date : today()}"></div>
     <div class="field"><label>Valid until</label><input id="qf-valid" type="date" value="${q ? q.validUntil : validDefault}"></div>
@@ -2789,6 +2813,21 @@
         const dd = document.getElementById("quot-student-dd");
         if (dd) dd.style.display = "none";
       }
+      function calcQuotTotal() {
+        const unit = parseFloat(document.getElementById("qf-unit")?.value) || 0;
+        const qty  = parseFloat(document.getElementById("qf-qty")?.value)  || 1;
+        const disc = parseFloat(document.getElementById("qf-disc")?.value) || 0;
+        const discType = document.getElementById("qf-disc-type")?.value || "flat";
+        const cur  = document.getElementById("qf-cur")?.value || "AED";
+        const subtotal = unit * qty;
+        const discAmt  = discType === "pct" ? subtotal * disc / 100 : disc;
+        const total    = Math.max(0, subtotal - discAmt);
+        const el = id => document.getElementById(id);
+        if (el("qf-subtotal"))     el("qf-subtotal").textContent     = fmtOrig(subtotal, cur);
+        if (el("qf-disc-display")) el("qf-disc-display").textContent = discAmt > 0 ? `-${fmtOrig(discAmt, cur)}` : "—";
+        if (el("qf-total-display"))el("qf-total-display").textContent = fmtOrig(total, cur);
+        if (el("qf-amt"))          el("qf-amt").value = total;
+      }
       function selectQuotStudent(id, name, program, fee, cur) {
         document.getElementById("qf-sid").value = id;
         document.getElementById("qf-sid-search").value = name;
@@ -2805,8 +2844,14 @@
         const studentId = v("qf-sid");
         const studentName = document.getElementById("qf-sid-search") ? document.getElementById("qf-sid-search").value : "";
         const program = v("qf-prog");
-        const amount = parseFloat(v("qf-amt")) || 0;
+        const unitPrice = parseFloat(document.getElementById("qf-unit")?.value) || 0;
+        const qty = parseFloat(document.getElementById("qf-qty")?.value) || 1;
+        const discount = parseFloat(document.getElementById("qf-disc")?.value) || 0;
+        const discountType = document.getElementById("qf-disc-type")?.value || "flat";
         const currency = v("qf-cur");
+        const subtotal = unitPrice * qty;
+        const discAmt = discountType === "pct" ? subtotal * discount / 100 : discount;
+        const amount = Math.max(0, Math.round((subtotal - discAmt) * 100) / 100);
         const date = v("qf-date");
         const validUntil = v("qf-valid");
         const notes = document.getElementById("qf-notes") ? document.getElementById("qf-notes").value : "";
@@ -2815,9 +2860,9 @@
         if (!DB.quotations) DB.quotations = [];
         if (id) {
           const q = DB.quotations.find(x => x.id === id);
-          if (q) Object.assign(q, { studentId, studentName, program, amount, currency, date, validUntil, notes });
+          if (q) Object.assign(q, { studentId, studentName, program, unitPrice, qty, discount, discountType, amount, currency, date, validUntil, notes });
         } else {
-          DB.quotations.push({ id: uid(), quotationNo: nextQuotationNo(), studentId, studentName, program, amount, currency, date, validUntil, notes, status: "draft", paymentId: null });
+          DB.quotations.push({ id: uid(), quotationNo: nextQuotationNo(), studentId, studentName, program, unitPrice, qty, discount, discountType, amount, currency, date, validUntil, notes, status: "draft", paymentId: null });
         }
         logActivity("quotation", `${id ? "Updated" : "Created"} quotation for ${studentName}`);
         saveDB(); closeModal(); renderCurrentPage();
