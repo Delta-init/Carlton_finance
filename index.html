@@ -1212,17 +1212,20 @@
           </svg>Quotations
         </div>
         <div class="nav-item" id="nav-payments" onclick="nav('payments', this)">
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-          >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
             <rect x="2" y="3" width="12" height="10" rx="1.5" />
-            <path d="M2 6h12M5 10h2M10 10h1" /></svg
-          >Payments
+            <path d="M2 6h12M5 10h2M10 10h1" /></svg>Payments
+        </div>
+        <div class="nav-item" id="nav-salespeople" onclick="nav('salespeople', this)">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="6" cy="5" r="2.5"/><path d="M1 13c0-2.8 2.2-4 5-4"/>
+            <circle cx="12" cy="8" r="1.8"/><path d="M9.5 13c0-2 1.2-3 2.5-3s2.5 1 2.5 3"/>
+          </svg>Salespeople
+        </div>
+        <div class="nav-item" id="nav-commission" onclick="nav('commission', this)">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M2 12l3-4 3 2 3-5 3 2"/><circle cx="5" cy="8" r="1"/><circle cx="11" cy="5" r="1"/>
+          </svg>Commission
         </div>
         <div class="nav-item" id="nav-expenses" onclick="nav('expenses', this)">
           <svg
@@ -2048,6 +2051,8 @@
             },
           ],
           payrollRuns: [],
+          salespeople: [],
+          commissions: [],
           activityLog: [],
         };
       }
@@ -2120,6 +2125,8 @@
           "students",
           "programs",
           "payments",
+          "salespeople",
+          "commission",
           "expenses",
           "payroll",
           "reminders",
@@ -2243,6 +2250,8 @@
         students: "Students",
         programs: "Programs",
         payments: "Payments",
+        salespeople: "Salespeople",
+        commission: "Commission",
         expenses: "Expenses",
         payroll: "Payroll",
         reminders: "Reminders",
@@ -2257,6 +2266,7 @@
         programs: "+ Add program",
         quotations: "+ New quotation",
         payments: "+ Record payment",
+        salespeople: "+ Add salesperson",
         expenses: "+ Add expense",
         payroll: "+ Add staff",
         reconciliation: "↑ Upload statement",
@@ -2307,6 +2317,7 @@
           programs: () => openModal(modalAddProgram()),
           quotations: () => { openModal(modalAddQuotation()); autoVatByCurrency(); calcQuotTotal(); },
           payments: () => { openModal(modalAddPayment()); updatePaySummary(); },
+          salespeople: () => openModal(modalAddSalesperson()),
           expenses: () => openModal(modalAddExpense()),
           payroll: () => openModal(modalAddStaff()),
           reconciliation: () => triggerStatementUpload(),
@@ -2324,6 +2335,8 @@
           programs: programsPage,
           quotations: quotationsPage,
           payments,
+          salespeople: salespeoplerPage,
+          commission: commissionPage,
           expenses,
           payroll,
           reminders,
@@ -2837,7 +2850,13 @@
     <div class="field"><label>Quotation date</label><input id="qf-date" type="date" value="${q ? q.date : today()}"></div>
     <div class="field"><label>Valid until</label><input id="qf-valid" type="date" value="${q ? q.validUntil : validDefault}"></div>
   </div>
-  <div class="field"><label>Payment due date <span style="color:var(--text3);font-weight:400">(for reminders)</span></label><input id="qf-due" type="date" value="${q ? (q.dueDate || '') : ''}"></div>
+  <div class="form-row2 form-row2-wrap">
+    <div class="field"><label>Salesperson</label><select id="qf-sp" style="width:100%">
+      <option value="">— None —</option>
+      ${(DB.salespeople||[]).filter(s=>s.status==='active').map(s=>`<option value="${s.id}"${q&&q.salespersonId===s.id?' selected':''}>${s.name}</option>`).join('')}
+    </select></div>
+    <div class="field"><label>Payment due date <span style="color:var(--text3);font-weight:400">(for reminders)</span></label><input id="qf-due" type="date" value="${q ? (q.dueDate || '') : ''}"></div>
+  </div>
   <div class="field"><label>Notes</label><textarea id="qf-notes" rows="2" placeholder="Terms, conditions, notes..." style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);resize:vertical;font-size:13px">${q ? (q.notes || "") : ""}</textarea></div>
   <div class="modal-actions">
     <button class="btn" onclick="closeModal()">Cancel</button>
@@ -2932,20 +2951,245 @@
         const date = v("qf-date");
         const validUntil = v("qf-valid");
         const dueDate = document.getElementById("qf-due")?.value || null;
+        const salespersonId = document.getElementById("qf-sp")?.value || null;
         const notes = document.getElementById("qf-notes") ? document.getElementById("qf-notes").value : "";
         if (!studentName && !studentId) { toast("Student name required", "amber"); return; }
         if (!amount) { toast("Amount required", "amber"); return; }
         if (!DB.quotations) DB.quotations = [];
         if (id) {
           const q = DB.quotations.find(x => x.id === id);
-          if (q) Object.assign(q, { studentId, studentName, program, unitPrice, qty, discount, discountType, vatEnabled, vatRate, vatAmount, amount, currency, date, validUntil, dueDate, notes });
+          if (q) Object.assign(q, { studentId, studentName, program, unitPrice, qty, discount, discountType, vatEnabled, vatRate, vatAmount, amount, currency, date, validUntil, dueDate, salespersonId, notes });
         } else {
-          DB.quotations.push({ id: uid(), quotationNo: nextQuotationNo(), studentId, studentName, program, unitPrice, qty, discount, discountType, vatEnabled, vatRate, vatAmount, amount, currency, date, validUntil, dueDate, notes, status: "draft", paymentId: null });
+          DB.quotations.push({ id: uid(), quotationNo: nextQuotationNo(), studentId, studentName, program, unitPrice, qty, discount, discountType, vatEnabled, vatRate, vatAmount, amount, currency, date, validUntil, dueDate, salespersonId, notes, status: "draft", paymentId: null });
         }
         logActivity("quotation", `${id ? "Updated" : "Created"} quotation for ${studentName}`);
         saveDB(); closeModal(); renderCurrentPage();
         toast(id ? "Quotation updated" : "Quotation created");
       }
+      // ── SALESPEOPLE & COMMISSION ─────────────────────────────────
+      function getSalesperson(id) { return (DB.salespeople||[]).find(s=>s.id===id)||{name:'—'}; }
+      function spOptions(sel) {
+        return `<option value="">— None —</option>`+(DB.salespeople||[]).filter(s=>s.status==='active').map(s=>`<option value="${s.id}"${s.id===sel?' selected':''}>${s.name}</option>`).join('');
+      }
+      function calcCommissionRate(sp, baseUSD) {
+        if (sp.commissionType === 'tier') {
+          const tier = (sp.tiers||[]).slice().sort((a,b)=>b.min-a.min).find(t=>baseUSD>=t.min);
+          return tier ? tier.rate : 0;
+        }
+        return sp.commissionRate || 0;
+      }
+      function calcAndSaveCommissions(quot, payment) {
+        if (!DB.commissions) DB.commissions = [];
+        const baseAmt  = payment.amount;
+        const currency = payment.currency;
+        const baseUSD  = toUSD(baseAmt, currency);
+        let spId = quot.salespersonId;
+        let level = 1;
+        while (spId && level <= 3) {
+          const sp = getSalesperson(spId);
+          if (!sp.id) break;
+          const rate   = calcCommissionRate(sp, baseUSD);
+          const commAmt = Math.round(baseAmt * rate) / 100;
+          DB.commissions.push({
+            id: uid(), paymentId: payment.id, quotationId: quot.id,
+            salespersonId: spId, level, baseAmount: baseAmt, rate,
+            commissionAmount: commAmt, currency, date: payment.date,
+            paid: false, paidDate: null
+          });
+          spId  = sp.managerId || null;
+          level++;
+        }
+      }
+      function salespeoplerPage() {
+        if (!DB.salespeople) DB.salespeople = [];
+        const canEdit = perm('canEdit'), canDelete = perm('canDelete');
+        return `<div class="metrics m3">
+  <div class="metric"><div class="metric-label">Total</div><div class="metric-value">${DB.salespeople.length}</div></div>
+  <div class="metric"><div class="metric-label">Active</div><div class="metric-value green">${DB.salespeople.filter(s=>s.status==='active').length}</div></div>
+  <div class="metric"><div class="metric-label">Total commission paid</div><div class="metric-value accent">${fmt(((DB.commissions||[]).filter(c=>c.paid).reduce((s,c)=>s+toUSD(c.commissionAmount,c.currency),0)))}</div></div>
+</div>
+<div class="card">
+  <div class="card-header"><div class="card-title">Salespeople</div></div>
+  ${DB.salespeople.length===0?`<div class="empty"><div class="empty-icon">👤</div><div class="empty-text">No salespeople yet</div></div>`:`
+  <div class="tbl-wrap"><table>
+    <tr><th>Name</th><th>Phone</th><th>Commission Type</th><th>Rate / Tiers</th><th>Manager (L2)</th><th>Status</th><th></th></tr>
+    ${DB.salespeople.map(sp=>{
+      const mgr = sp.managerId ? getSalesperson(sp.managerId) : null;
+      const rateDisplay = sp.commissionType==='tier'
+        ? (sp.tiers||[]).map(t=>`${t.min}–${t.max??'∞'}: ${t.rate}%`).join(', ')
+        : `${sp.commissionRate||0}% flat`;
+      return `<tr>
+        <td style="font-weight:600">${sp.name}</td>
+        <td class="text2">${sp.phone||'—'}</td>
+        <td><span class="badge ${sp.commissionType==='tier'?'b-blue':'b-gray'}">${sp.commissionType==='tier'?'Tier':'Flat'}</span></td>
+        <td class="text3" style="font-size:12px">${rateDisplay}</td>
+        <td class="text2">${mgr?mgr.name:'—'}</td>
+        <td>${statusBadge(sp.status)}</td>
+        <td class="fl" style="gap:4px;justify-content:flex-end">
+          ${canEdit?`<button class="btn btn-sm" onclick="openModal(modalAddSalesperson('${sp.id}'))">Edit</button>`:''}
+          ${canDelete?`<button class="btn btn-sm btn-danger" onclick="confirmDelete('salesperson','${sp.id}')">Del</button>`:''}
+        </td>
+      </tr>`;
+    }).join('')}
+  </table></div>`}
+</div>`;
+      }
+      function modalAddSalesperson(id) {
+        const sp = id ? (DB.salespeople||[]).find(x=>x.id===id) : null;
+        const isTier = sp && sp.commissionType==='tier';
+        const tiers  = sp && sp.tiers ? JSON.stringify(sp.tiers) : JSON.stringify([{min:0,max:10000,rate:3},{min:10001,max:50000,rate:5},{min:50001,max:null,rate:7}]);
+        const mgrOpts = `<option value="">— None (top level) —</option>`+(DB.salespeople||[]).filter(s=>s.id!==id&&s.status==='active').map(s=>`<option value="${s.id}"${sp&&sp.managerId===s.id?' selected':''}>${s.name}</option>`).join('');
+        return `<div class="modal-title">${sp?'Edit salesperson':'New salesperson'}</div>
+<div class="form-row2 form-row2-wrap">
+  <div class="field"><label>Name</label><input id="sp-name" value="${sp?sp.name:''}"></div>
+  <div class="field"><label>Phone</label><input id="sp-phone" value="${sp?sp.phone||'':''}" placeholder="+971 50 000 0000"></div>
+</div>
+<div class="form-row2 form-row2-wrap">
+  <div class="field"><label>Email</label><input id="sp-email" type="email" value="${sp?sp.email||'':''}" placeholder="email@example.com"></div>
+  <div class="field"><label>Status</label><select id="sp-status">
+    <option value="active"${!sp||sp.status==='active'?' selected':''}>Active</option>
+    <option value="inactive"${sp&&sp.status==='inactive'?' selected':''}>Inactive</option>
+  </select></div>
+</div>
+<div class="field"><label>Reports to (Manager — L2 commission)</label><select id="sp-mgr" style="width:100%">${mgrOpts}</select></div>
+<div class="field"><label>Commission Type</label><select id="sp-ctype" onchange="toggleTierFields()" style="width:100%">
+  <option value="flat"${!isTier?' selected':''}>Flat Rate (%)</option>
+  <option value="tier"${isTier?' selected':''}>Tier-based (by volume)</option>
+</select></div>
+<div id="sp-flat-row" style="${isTier?'display:none':''}">
+  <div class="field"><label>Flat commission rate (%)</label><input id="sp-rate" type="number" min="0" max="100" step="0.01" value="${sp&&sp.commissionType!=='tier'?sp.commissionRate||0:5}"></div>
+</div>
+<div id="sp-tier-row" style="${!isTier?'display:none':''}">
+  <div class="field"><label>Tiers (JSON) <span style="color:var(--text3);font-size:11px">— [{min,max,rate},…] max=null for unlimited</span></label>
+    <textarea id="sp-tiers" rows="4" style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-family:var(--mono);font-size:12px;resize:vertical">${tiers}</textarea>
+  </div>
+  <div style="font-size:11px;color:var(--text3);margin:-8px 0 8px">Example: [{&quot;min&quot;:0,&quot;max&quot;:10000,&quot;rate&quot;:3},{&quot;min&quot;:10001,&quot;max&quot;:null,&quot;rate&quot;:5}]</div>
+</div>
+<div class="modal-actions">
+  <button class="btn" onclick="closeModal()">Cancel</button>
+  <button class="btn btn-accent" onclick="saveSalesperson('${sp?sp.id:''}')">Save</button>
+</div>`;
+      }
+      function toggleTierFields() {
+        const isTier = document.getElementById('sp-ctype')?.value === 'tier';
+        const f = document.getElementById('sp-flat-row');
+        const t = document.getElementById('sp-tier-row');
+        if (f) f.style.display = isTier ? 'none' : '';
+        if (t) t.style.display = isTier ? '' : 'none';
+      }
+      function saveSalesperson(id) {
+        const name  = document.getElementById('sp-name')?.value?.trim();
+        if (!name) { toast('Name required','amber'); return; }
+        const phone = document.getElementById('sp-phone')?.value?.trim()||'';
+        const email = document.getElementById('sp-email')?.value?.trim()||'';
+        const status= document.getElementById('sp-status')?.value||'active';
+        const managerId = document.getElementById('sp-mgr')?.value||null;
+        const commissionType = document.getElementById('sp-ctype')?.value||'flat';
+        const commissionRate = parseFloat(document.getElementById('sp-rate')?.value)||0;
+        let tiers = [];
+        if (commissionType==='tier') {
+          try { tiers = JSON.parse(document.getElementById('sp-tiers')?.value||'[]'); }
+          catch(e) { toast('Invalid tiers JSON','amber'); return; }
+        }
+        if (!DB.salespeople) DB.salespeople = [];
+        if (id) {
+          const sp = DB.salespeople.find(x=>x.id===id);
+          if (sp) Object.assign(sp,{name,phone,email,status,managerId,commissionType,commissionRate,tiers});
+        } else {
+          DB.salespeople.push({id:uid(),name,phone,email,status,managerId,commissionType,commissionRate,tiers});
+        }
+        saveDB(); closeModal(); renderCurrentPage();
+        toast(id?'Salesperson updated':'Salesperson added');
+      }
+      let _cf = { spId:'', dateFrom:'', dateTo:'', paid:'' };
+      function commissionPage() {
+        if (!DB.commissions) DB.commissions = [];
+        if (!DB.salespeople) DB.salespeople = [];
+        const fl = _cf;
+        let cs = DB.commissions.slice().sort((a,b)=>b.date>a.date?1:-1);
+        if (fl.spId)    cs = cs.filter(c=>c.salespersonId===fl.spId);
+        if (fl.dateFrom)cs = cs.filter(c=>c.date>=fl.dateFrom);
+        if (fl.dateTo)  cs = cs.filter(c=>c.date<=fl.dateTo);
+        if (fl.paid==='paid')    cs = cs.filter(c=>c.paid);
+        if (fl.paid==='unpaid')  cs = cs.filter(c=>!c.paid);
+        const hasFilter = fl.spId||fl.dateFrom||fl.dateTo||fl.paid;
+        const totalComm  = DB.commissions.reduce((s,c)=>s+toUSD(c.commissionAmount,c.currency),0);
+        const paidComm   = DB.commissions.filter(c=>c.paid).reduce((s,c)=>s+toUSD(c.commissionAmount,c.currency),0);
+        const unpaidComm = totalComm - paidComm;
+        const spOpts = `<option value="">All salespeople</option>`+(DB.salespeople||[]).map(s=>`<option value="${s.id}"${fl.spId===s.id?' selected':''}>${s.name}</option>`).join('');
+        const canEdit = perm('canEdit');
+        return `<div class="metrics m3">
+  <div class="metric"><div class="metric-label">Total commission</div><div class="metric-value accent">${fmt(totalComm)}</div></div>
+  <div class="metric"><div class="metric-label">Paid</div><div class="metric-value green">${fmt(paidComm)}</div></div>
+  <div class="metric"><div class="metric-label">Unpaid</div><div class="metric-value red">${fmt(unpaidComm)}</div></div>
+</div>
+<div class="card" style="margin-bottom:12px">
+  <div class="card-header"><div class="card-title">Filters</div>
+    <div class="fl" style="gap:8px">
+      ${hasFilter?`<button class="btn btn-sm" onclick="_cf={spId:'',dateFrom:'',dateTo:'',paid:''};renderCurrentPage()">Clear</button>`:''}
+      <button class="btn btn-sm" onclick="exportCommissionCSV()">⬇ Export CSV</button>
+    </div>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:4px 0 8px">
+    <div class="field" style="margin:0;min-width:160px"><label>Salesperson</label><select onchange="_cf.spId=this.value;renderCurrentPage()" style="width:100%">${spOpts}</select></div>
+    <div class="field" style="margin:0;min-width:130px"><label>From date</label><input type="date" value="${fl.dateFrom}" onchange="_cf.dateFrom=this.value;renderCurrentPage()" style="width:100%"></div>
+    <div class="field" style="margin:0;min-width:130px"><label>To date</label><input type="date" value="${fl.dateTo}" onchange="_cf.dateTo=this.value;renderCurrentPage()" style="width:100%"></div>
+    <div class="field" style="margin:0;min-width:120px"><label>Status</label><select onchange="_cf.paid=this.value;renderCurrentPage()" style="width:100%">
+      <option value=""${!fl.paid?' selected':''}>All</option>
+      <option value="paid"${fl.paid==='paid'?' selected':''}>Paid</option>
+      <option value="unpaid"${fl.paid==='unpaid'?' selected':''}>Unpaid</option>
+    </select></div>
+  </div>
+</div>
+<div class="card">
+  <div class="card-header"><div class="card-title">Commission Records <span class="text3" style="font-size:12px;font-weight:400">(${cs.length})</span></div></div>
+  ${cs.length===0?`<div class="empty"><div class="empty-icon">💰</div><div class="empty-text">${hasFilter?'No records match filters':'No commissions yet — assign salespeople to quotations'}</div></div>`:`
+  <div class="tbl-wrap"><table>
+    <tr><th>Date</th><th>Salesperson</th><th>Level</th><th>Quotation</th><th>Payment Base</th><th>Rate</th><th>Commission</th><th>Status</th><th></th></tr>
+    ${cs.map(c=>{
+      const sp   = getSalesperson(c.salespersonId);
+      const quot = (DB.quotations||[]).find(q=>q.id===c.quotationId);
+      const lvlBadge = c.level===1?'<span class="badge b-green">L1 Direct</span>':c.level===2?'<span class="badge b-blue">L2 Manager</span>':'<span class="badge b-gray">L3 Senior</span>';
+      return `<tr>
+        <td class="mono text3">${dateStr(c.date)}</td>
+        <td style="font-weight:600">${sp.name}</td>
+        <td>${lvlBadge}</td>
+        <td class="mono" style="font-size:11px">${quot?quot.quotationNo:'—'}</td>
+        <td class="mono">${fmtOrig(c.baseAmount,c.currency)}</td>
+        <td class="mono">${c.rate}%</td>
+        <td class="mono" style="color:var(--accent);font-weight:600">${fmtOrig(c.commissionAmount,c.currency)}</td>
+        <td>${c.paid?`<span class="badge b-green">Paid · ${dateStr(c.paidDate)}</span>`:`<span class="badge b-amber">Unpaid</span>`}</td>
+        <td>${canEdit&&!c.paid?`<button class="btn btn-sm" onclick="markCommissionPaid('${c.id}')">✓ Mark Paid</button>`:''}</td>
+      </tr>`;
+    }).join('')}
+  </table></div>`}
+</div>`;
+      }
+      function markCommissionPaid(id) {
+        const c = (DB.commissions||[]).find(x=>x.id===id);
+        if (!c) return;
+        c.paid = true; c.paidDate = today();
+        saveDB(); renderCurrentPage();
+        toast('Commission marked as paid');
+      }
+      function exportCommissionCSV() {
+        const fl = _cf;
+        let cs = (DB.commissions||[]).slice().sort((a,b)=>b.date>a.date?1:-1);
+        if (fl.spId)    cs = cs.filter(c=>c.salespersonId===fl.spId);
+        if (fl.dateFrom)cs = cs.filter(c=>c.date>=fl.dateFrom);
+        if (fl.dateTo)  cs = cs.filter(c=>c.date<=fl.dateTo);
+        if (fl.paid==='paid')   cs = cs.filter(c=>c.paid);
+        if (fl.paid==='unpaid') cs = cs.filter(c=>!c.paid);
+        const rows=[['Date','Salesperson','Level','Quotation','Base Amount','Currency','Rate %','Commission','Status','Paid Date']];
+        cs.forEach(c=>{
+          const sp=getSalesperson(c.salespersonId);
+          const quot=(DB.quotations||[]).find(q=>q.id===c.quotationId);
+          rows.push([c.date,sp.name,`L${c.level}`,quot?quot.quotationNo:'',c.baseAmount,c.currency,c.rate,c.commissionAmount,c.paid?'Paid':'Unpaid',c.paidDate||'']);
+        });
+        downloadCSV(`commission-${today()}.csv`,rows);
+        toast(`Exported ${cs.length} record(s)`);
+      }
+
       function downloadCSV(filename, rows) {
         const csv = rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g,'""')}"`).join(',')).join('\n');
         const a = document.createElement('a');
@@ -4702,7 +4946,12 @@
         });
         if (quotationId) {
           const cq = (DB.quotations || []).find(x => x.id === quotationId);
-          if (cq) { cq.status = "converted"; cq.paymentId = DB.payments[DB.payments.length - 1].id; }
+          if (cq) {
+            cq.status = "converted";
+            cq.paymentId = DB.payments[DB.payments.length - 1].id;
+            // Calculate multi-level commissions
+            if (cq.salespersonId) calcAndSaveCommissions(cq, DB.payments[DB.payments.length - 1]);
+          }
           window._convertingQuotationId = null;
         }
         const st = getStudent(studentId);
@@ -5306,6 +5555,11 @@
           const pr = DB.programs.find((x) => x.id === id);
           DB.programs = DB.programs.filter((x) => x.id !== id);
           logActivity("delete", `Deleted program: ${pr ? pr.name : "?"}`);
+        } else if (type === "salesperson") {
+          if (!DB.salespeople) DB.salespeople = [];
+          const sp = DB.salespeople.find((x) => x.id === id);
+          DB.salespeople = DB.salespeople.filter((x) => x.id !== id);
+          logActivity("delete", `Deleted salesperson: ${sp ? sp.name : "?"}`);
         } else {
           const maps = {
             account: "accounts",
