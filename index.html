@@ -2704,17 +2704,40 @@
         const count = (DB.quotations || []).filter(q => q.quotationNo && q.quotationNo.startsWith(`QUO-${year}-`)).length + 1;
         return `QUO-${year}-${String(count).padStart(4, "0")}`;
       }
+      let _qf = { search: '', status: '', dateFrom: '', dateTo: '' };
       function quotationsPage() {
         const canCreate = perm("canCreate"), canEdit = perm("canEdit");
-        const qs = (DB.quotations || []).slice().sort((a, b) => b.date > a.date ? 1 : -1);
-        const statusColor = { draft: "var(--text3)", sent: "var(--accent)", accepted: "var(--green)", converted: "var(--text3)", cancelled: "var(--red)" };
+        const fl = _qf;
         const statusBadge = { draft: "b-gray", sent: "b-blue", accepted: "b-green", converted: "b-gray", cancelled: "b-red" };
-        return `<div class="card">
+        let qs = (DB.quotations || []).slice().sort((a, b) => b.date > a.date ? 1 : -1);
+        if (fl.search) { const s = fl.search.toLowerCase(); qs = qs.filter(q => (q.studentName||'').toLowerCase().includes(s) || (q.quotationNo||'').toLowerCase().includes(s) || (q.program||'').toLowerCase().includes(s)); }
+        if (fl.status)   qs = qs.filter(q => q.status === fl.status);
+        if (fl.dateFrom) qs = qs.filter(q => q.date >= fl.dateFrom);
+        if (fl.dateTo)   qs = qs.filter(q => q.date <= fl.dateTo);
+        const hasFilter = fl.search || fl.status || fl.dateFrom || fl.dateTo;
+        return `<div class="card" style="margin-bottom:12px">
+  <div class="card-header"><div class="card-title">Filters</div>
+    <div class="fl" style="gap:8px">
+      ${hasFilter ? `<button class="btn btn-sm" onclick="_qf={search:'',status:'',dateFrom:'',dateTo:''};renderCurrentPage()">Clear</button>` : ''}
+      <button class="btn btn-sm" onclick="exportQuotationsCSV()">⬇ Export CSV</button>
+    </div>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:4px 0 8px">
+    <div class="field" style="margin:0;min-width:160px"><label>Search</label><input type="text" placeholder="Student / No. / Program" value="${fl.search}" oninput="_qf.search=this.value;renderCurrentPage()" style="width:100%"></div>
+    <div class="field" style="margin:0;min-width:130px"><label>Status</label><select onchange="_qf.status=this.value;renderCurrentPage()" style="width:100%">
+      <option value=""${!fl.status?' selected':''}>All</option>
+      ${['draft','sent','accepted','converted','cancelled'].map(s=>`<option value="${s}"${fl.status===s?' selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
+    </select></div>
+    <div class="field" style="margin:0;min-width:130px"><label>From date</label><input type="date" value="${fl.dateFrom}" onchange="_qf.dateFrom=this.value;renderCurrentPage()" style="width:100%"></div>
+    <div class="field" style="margin:0;min-width:130px"><label>To date</label><input type="date" value="${fl.dateTo}" onchange="_qf.dateTo=this.value;renderCurrentPage()" style="width:100%"></div>
+  </div>
+</div>
+<div class="card">
   <div class="card-header">
-    <div class="card-title">Quotations</div>
+    <div class="card-title">Quotations <span class="text3" style="font-size:12px;font-weight:400">(${qs.length})</span></div>
   </div>
   ${qs.length === 0
-    ? `<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">No quotations yet</div>${canCreate ? `<button class="btn btn-accent" onclick="openModal(modalAddQuotation())">Create first quotation</button>` : ""}</div>`
+    ? `<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">${hasFilter ? 'No quotations match filters' : 'No quotations yet'}</div>${canCreate && !hasFilter ? `<button class="btn btn-accent" onclick="openModal(modalAddQuotation());calcQuotTotal()">Create first quotation</button>` : ""}</div>`
     : `<div class="tbl-wrap"><table>
   <tr><th>No.</th><th>Student</th><th>Program</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Date</th><th>Valid Until</th><th>Status</th><th></th></tr>
   ${qs.map(q => {
@@ -2868,6 +2891,49 @@
         saveDB(); closeModal(); renderCurrentPage();
         toast(id ? "Quotation updated" : "Quotation created");
       }
+      function downloadCSV(filename, rows) {
+        const csv = rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g,'""')}"`).join(',')).join('\n');
+        const a = document.createElement('a');
+        a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+        a.download = filename;
+        a.click();
+      }
+      function exportQuotationsCSV() {
+        const fl = _qf;
+        let qs = (DB.quotations || []).slice().sort((a,b) => b.date > a.date ? 1 : -1);
+        if (fl.search)   { const s = fl.search.toLowerCase(); qs = qs.filter(q => (q.studentName||'').toLowerCase().includes(s)||(q.quotationNo||'').toLowerCase().includes(s)||(q.program||'').toLowerCase().includes(s)); }
+        if (fl.status)   qs = qs.filter(q => q.status === fl.status);
+        if (fl.dateFrom) qs = qs.filter(q => q.date >= fl.dateFrom);
+        if (fl.dateTo)   qs = qs.filter(q => q.date <= fl.dateTo);
+        const rows = [['Quotation No','Student','Program','Unit Price','Qty','Discount','Currency','Total Amount','Paid','Balance','Date','Valid Until','Status']];
+        qs.forEach(q => {
+          const name = q.studentId ? (getStudent(q.studentId).name || q.studentName) : (q.studentName || '');
+          const paid = (DB.payments||[]).filter(p => p.quotationId ? p.quotationId===q.id : p.studentId===q.studentId).reduce((s,p) => s+cvt(p.amount,p.currency,q.currency),0);
+          const balance = q.amount - paid;
+          rows.push([q.quotationNo,name,q.program||'',q.unitPrice??q.amount,q.qty??1,q.discount??0,q.currency,q.amount,Math.round(paid*100)/100,Math.round(balance*100)/100,q.date,q.validUntil||'',q.status]);
+        });
+        downloadCSV(`quotations-${today()}.csv`, rows);
+        toast(`Exported ${qs.length} quotation(s)`);
+      }
+      function exportPaymentsCSV() {
+        const fl = _pf;
+        let ps = (DB.payments||[]).slice().sort((a,b) => b.date > a.date ? 1 : -1);
+        if (fl.search)    { const s = fl.search.toLowerCase(); ps = ps.filter(p => (getStudent(p.studentId).name||'').toLowerCase().includes(s)||(p.ref||'').toLowerCase().includes(s)); }
+        if (fl.dateFrom)  ps = ps.filter(p => p.date >= fl.dateFrom);
+        if (fl.dateTo)    ps = ps.filter(p => p.date <= fl.dateTo);
+        if (fl.currency)  ps = ps.filter(p => p.currency === fl.currency);
+        if (fl.method)    ps = ps.filter(p => p.method === fl.method);
+        if (fl.accountId) ps = ps.filter(p => p.accountId === fl.accountId);
+        const rows = [['Date','Student','Quotation No','Amount','Currency','USD Equiv','Method','Account','Reference']];
+        ps.forEach(p => {
+          const st = getStudent(p.studentId);
+          const ac = getAccount(p.accountId);
+          const quot = p.quotationId ? (DB.quotations||[]).find(q=>q.id===p.quotationId) : null;
+          rows.push([p.date,st.name||'',quot?quot.quotationNo:'',p.amount,p.currency,fmt(toUSD(p.amount,p.currency)),p.method,ac.name||'',p.ref||'']);
+        });
+        downloadCSV(`payments-${today()}.csv`, rows);
+        toast(`Exported ${ps.length} payment(s)`);
+      }
       function setQuotationStatus(id, status) {
         const q = (DB.quotations || []).find(x => x.id === id);
         if (!q) return;
@@ -2886,22 +2952,56 @@
       }
 
       // ── PAGE: PAYMENTS ───────────────────────────────────────────
+      let _pf = { search: '', dateFrom: '', dateTo: '', currency: '', method: '', accountId: '' };
       function payments() {
         const canDelete = perm("canDelete");
+        const fl = _pf;
+        let ps = (DB.payments || []).slice().sort((a, b) => b.date > a.date ? 1 : -1);
+        if (fl.search)    { const s = fl.search.toLowerCase(); ps = ps.filter(p => (getStudent(p.studentId).name||'').toLowerCase().includes(s) || (p.ref||'').toLowerCase().includes(s)); }
+        if (fl.dateFrom)  ps = ps.filter(p => p.date >= fl.dateFrom);
+        if (fl.dateTo)    ps = ps.filter(p => p.date <= fl.dateTo);
+        if (fl.currency)  ps = ps.filter(p => p.currency === fl.currency);
+        if (fl.method)    ps = ps.filter(p => p.method === fl.method);
+        if (fl.accountId) ps = ps.filter(p => p.accountId === fl.accountId);
+        const hasFilter = fl.search || fl.dateFrom || fl.dateTo || fl.currency || fl.method || fl.accountId;
+        const filteredTotal = ps.reduce((s, p) => s + toUSD(p.amount, p.currency), 0);
+        const acctOpts = `<option value="">All accounts</option>` + DB.accounts.map(a => `<option value="${a.id}"${fl.accountId===a.id?' selected':''}>${a.name}</option>`).join('');
+        const curList = [...new Set((DB.payments||[]).map(p=>p.currency))].filter(Boolean);
+        const curOpts = `<option value="">All currencies</option>` + curList.map(c => `<option value="${c}"${fl.currency===c?' selected':''}>${c}</option>`).join('');
         return `<div class="metrics m4">
     <div class="metric"><div class="metric-label">Total received</div><div class="metric-value green">${fmt(totalFeesUSD())}</div></div>
     <div class="metric"><div class="metric-label">AED payments</div><div class="metric-value">${fmt(DB.payments.filter((p) => p.currency === "AED").reduce((s, p) => s + toUSD(p.amount, p.currency), 0))}</div></div>
     <div class="metric"><div class="metric-label">INR payments</div><div class="metric-value">${fmt(DB.payments.filter((p) => p.currency === "INR").reduce((s, p) => s + toUSD(p.amount, p.currency), 0))}</div></div>
     <div class="metric"><div class="metric-label">Records</div><div class="metric-value">${DB.payments.length}</div></div>
   </div>
+  <div class="card" style="margin-bottom:12px">
+    <div class="card-header"><div class="card-title">Filters</div>
+      <div class="fl" style="gap:8px">
+        ${hasFilter ? `<button class="btn btn-sm" onclick="_pf={search:'',dateFrom:'',dateTo:'',currency:'',method:'',accountId:''};renderCurrentPage()">Clear</button>` : ''}
+        <button class="btn btn-sm" onclick="exportPaymentsCSV()">⬇ Export CSV</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:4px 0 8px">
+      <div class="field" style="margin:0;min-width:160px"><label>Search</label><input type="text" placeholder="Student / Ref" value="${fl.search}" oninput="_pf.search=this.value;renderCurrentPage()" style="width:100%"></div>
+      <div class="field" style="margin:0;min-width:130px"><label>From date</label><input type="date" value="${fl.dateFrom}" onchange="_pf.dateFrom=this.value;renderCurrentPage()" style="width:100%"></div>
+      <div class="field" style="margin:0;min-width:130px"><label>To date</label><input type="date" value="${fl.dateTo}" onchange="_pf.dateTo=this.value;renderCurrentPage()" style="width:100%"></div>
+      <div class="field" style="margin:0;min-width:110px"><label>Currency</label><select onchange="_pf.currency=this.value;renderCurrentPage()" style="width:100%">${curOpts}</select></div>
+      <div class="field" style="margin:0;min-width:110px"><label>Method</label><select onchange="_pf.method=this.value;renderCurrentPage()" style="width:100%">
+        <option value=""${!fl.method?' selected':''}>All</option>
+        ${['Bank','PSP','Cash'].map(m=>`<option value="${m}"${fl.method===m?' selected':''}>${m}</option>`).join('')}
+      </select></div>
+      <div class="field" style="margin:0;min-width:140px"><label>Account</label><select onchange="_pf.accountId=this.value;renderCurrentPage()" style="width:100%">${acctOpts}</select></div>
+    </div>
+    ${hasFilter ? `<div style="font-size:12px;color:var(--text2);padding-bottom:6px">Showing <strong>${ps.length}</strong> of ${DB.payments.length} records · Filtered total: <span class="mono green">${fmt(filteredTotal)}</span></div>` : ''}
+  </div>
   <div class="card">
-    <div class="card-header"><div class="card-title">All payment records</div></div>
+    <div class="card-header"><div class="card-title">Payment records <span class="text3" style="font-size:12px;font-weight:400">(${ps.length})</span></div></div>
     ${
-      DB.payments.length === 0
-        ? `<div class="empty"><div class="empty-icon">💳</div><div class="empty-text">No payments recorded</div>${perm("canCreate") ? `<button class="btn btn-accent" onclick="openModal(modalAddPayment())">Record payment</button>` : ""}</div>`
+      ps.length === 0
+        ? `<div class="empty"><div class="empty-icon">💳</div><div class="empty-text">${hasFilter ? 'No payments match filters' : 'No payments recorded'}</div>${perm("canCreate") && !hasFilter ? `<button class="btn btn-accent" onclick="openModal(modalAddPayment())">Record payment</button>` : ""}</div>`
         : `<div class="tbl-wrap"><table>
       <tr><th>Student</th><th>Quotation</th><th>Amount</th><th>${CUR}</th><th>Cur</th><th>Method</th><th>Account</th><th>Ref</th><th>Date</th><th>Proof</th><th>Invoice</th><th></th></tr>
-      ${DB.payments
+      ${ps
         .map((p) => {
           const st = getStudent(p.studentId),
             ac = getAccount(p.accountId);
