@@ -3013,12 +3013,15 @@
       ps.length === 0
         ? `<div class="empty"><div class="empty-icon">💳</div><div class="empty-text">${hasFilter ? 'No payments match filters' : 'No payments recorded'}</div>${perm("canCreate") && !hasFilter ? `<button class="btn btn-accent" onclick="openModal(modalAddPayment())">Record payment</button>` : ""}</div>`
         : `<div class="tbl-wrap"><table>
-      <tr><th>Student</th><th>Quotation</th><th>Amount</th><th>${CUR}</th><th>Cur</th><th>Method</th><th>Account</th><th>Ref</th><th>Date</th><th>Proof</th><th>Invoice</th><th></th></tr>
+      <tr><th>Student</th><th>Quotation</th><th>Amount</th><th>${CUR}</th><th>Cur</th><th>Method</th><th>Account</th><th>Ref</th><th>Date</th><th>Proof</th><th>Invoice</th><th>Receipt</th><th></th></tr>
       ${ps
         .map((p) => {
           const st = getStudent(p.studentId),
             ac = getAccount(p.accountId);
           const quot = p.quotationId ? (DB.quotations || []).find(q => q.id === p.quotationId) : null;
+          const waBtn = st.contactNumber
+            ? `<button class="btn btn-sm" style="background:#25D366;color:#fff;border-color:#25D366;white-space:nowrap" onclick="sendWhatsApp('${st.contactNumber}', waReceiptMsg('${(st.name||'').replace(/'/g,"\\'")}','${quot?quot.quotationNo:'—'}',${p.amount},'${p.currency}','${p.date}','${p.ref||''}'))">💬 WA</button>`
+            : `<span class="text3" style="font-size:11px">—</span>`;
           return `<tr>
         <td style="font-weight:500">${st.name || "?"}</td>
         <td class="mono text3" style="font-size:11px">${quot ? `<span class="badge b-blue" style="font-size:10px">${quot.quotationNo}</span>` : `<span class="text3">—</span>`}</td>
@@ -3028,6 +3031,7 @@
         <td class="mono text3">${p.ref || "—"}</td><td class="mono text3">${dateStr(p.date)}</td>
         <td>${p.proof ? `<button class="btn btn-sm b-green" style="color:var(--green);border-color:rgba(74,222,128,.3)" onclick="viewProof('${p.id}')">📎 View</button>` : `<span class="text3" style="font-size:11px">—</span>`}</td>
         <td>${p.invoice ? `<span class="badge b-green">Sent</span>` : `<button class="btn btn-sm" onclick="generateInvoice('${p.id}')">Generate</button>`}</td>
+        <td>${waBtn}</td>
         <td>${canDelete ? `<button class="btn btn-sm btn-danger" onclick="confirmDelete('payment','${p.id}')">Del</button>` : ""}</td>
       </tr>`;
         })
@@ -3192,7 +3196,8 @@
               </div>
             </div>
           </div>
-          <div class="fl" style="gap:6px;align-items:flex-start;padding-top:4px">
+          <div class="fl" style="gap:6px;align-items:flex-start;padding-top:4px;flex-wrap:wrap">
+            ${st && st.contactNumber ? `<button class="btn btn-sm" style="background:#25D366;color:#fff;border-color:#25D366" onclick="sendWhatsApp('${st.contactNumber}', waReminderMsg('${name.replace(/'/g,"\\'")}','${q.quotationNo}','${q.program||''}',${balance},'${q.currency}','${q.dueDate}'))">💬 WhatsApp</button>` : `<span class="text3" style="font-size:11px">No contact no.</span>`}
             ${perm("canCreate") ? `<button class="btn btn-sm btn-accent" onclick="convertQuotation('${q.id}')">+ Record Payment</button>` : ""}
           </div>
         </div>
@@ -5207,6 +5212,18 @@
           renderCurrentPage();
           toast("Invoice marked as generated");
         }
+      }
+      function sendWhatsApp(phone, message) {
+        const clean = (phone || '').replace(/[\s\-\(\)]/g, '');
+        if (!clean) { toast('No contact number on record', 'amber'); return; }
+        const url = `https://wa.me/${clean}?text=${encodeURIComponent(message)}`;
+        window.open(url, '_blank');
+      }
+      function waReminderMsg(name, quotNo, program, balance, currency, dueDate) {
+        return `Hi ${name},\n\nThis is a payment reminder from Delta Academy.\n\nQuotation: ${quotNo}${program ? '\nProgram: ' + program : ''}\nBalance due: ${fmtOrig(balance, currency)}\nDue date: ${dateStr(dueDate)}\n\nPlease arrange payment at your earliest convenience.\n\nThank you! 🙏`;
+      }
+      function waReceiptMsg(name, quotNo, amount, currency, date, ref) {
+        return `Hi ${name},\n\nThank you for your payment! Here is your receipt summary:\n\nQuotation: ${quotNo}\nAmount paid: ${fmtOrig(amount, currency)}\nDate: ${dateStr(date)}${ref ? '\nReference: ' + ref : ''}\n\nThank you for choosing Delta Academy! 🎓`;
       }
       function copyReminder(studentId) {
         const s = getStudent(studentId);
