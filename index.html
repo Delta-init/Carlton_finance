@@ -2775,6 +2775,7 @@
         ${canEdit && q.status === "sent" ? `<button class="btn btn-sm" onclick="setQuotationStatus('${q.id}','accepted')">Accept</button>` : ""}
         ${canCreate && (q.status === "accepted" || q.status === "sent") ? `<button class="btn btn-sm btn-accent" onclick="convertQuotation('${q.id}')">Convert to Payment</button>` : ""}
         ${canCreate && q.status === "converted" && balance > 0 && q.studentId ? `<button class="btn btn-sm btn-accent" onclick="convertQuotation('${q.id}')">+ Record Payment</button>` : ""}
+        ${(()=>{ const hasComm=(DB.commissions||[]).some(c=>c.quotationId===q.id); return canEdit&&q.salespersonId&&q.status==='converted'&&!hasComm?`<button class="btn btn-sm" style="background:var(--accent-dim,#2d3a5e);color:var(--accent);border-color:var(--accent)" onclick="manualGenerateCommission('${q.id}')">⚡ Gen Commission</button>`:''; })()}
         ${canEdit ? `<button class="btn btn-sm" onclick="openModal(modalAddQuotation('${q.id}'));calcQuotTotal()">Edit</button>` : ""}
         ${canEdit && q.status !== "converted" && q.status !== "cancelled" ? `<button class="btn btn-sm" style="color:var(--red)" onclick="setQuotationStatus('${q.id}','cancelled')">Cancel</button>` : ""}
       </td>
@@ -3013,6 +3014,22 @@
           spId  = sp.managerId || null;
           level++;
         }
+      }
+      function manualGenerateCommission(qId) {
+        const quot = (DB.quotations||[]).find(q=>q.id===qId);
+        if (!quot) { toast('Quotation not found','amber'); return; }
+        if (!quot.salespersonId) { toast('No salesperson assigned to this quotation','amber'); return; }
+        // Find the most recent payment linked to this quotation (by quotationId or by student)
+        const payments = (DB.payments||[]).filter(p=>p.quotationId===qId||(p.studentId===quot.studentId&&!p.quotationId));
+        if (!payments.length) { toast('No payment found for this quotation','amber'); return; }
+        // Use the first payment as trigger (sorted by date asc)
+        const payment = payments.slice().sort((a,b)=>a.date>b.date?1:-1)[0];
+        const before = (DB.commissions||[]).length;
+        calcAndSaveCommissions(quot, payment);
+        const added = (DB.commissions||[]).length - before;
+        if (added === 0) { toast('Commission already exists for this quotation','amber'); return; }
+        saveDB(); renderCurrentPage();
+        toast(`✅ ${added} commission record${added>1?'s':''} generated`);
       }
       function salespeoplerPage() {
         if (!DB.salespeople) DB.salespeople = [];
