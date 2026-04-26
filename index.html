@@ -2782,7 +2782,7 @@
       <input type="hidden" id="qf-sid" value="${q ? (q.studentId || "") : ""}">
       <div id="quot-student-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg2);border:1px solid var(--border);border-radius:8px;z-index:300;max-height:200px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.25);margin-top:2px"></div>
     </div>
-    <div class="field"><label>Program</label><select id="qf-prog">${programOptions(q ? q.program : "")}</select></div>
+    <div class="field"><label>Program</label><select id="qf-prog" onchange="autoFillQuotProgram()">${programOptions(q ? q.program : "")}</select></div>
   </div>
   <div class="form-row2 form-row2-wrap">
     <div class="field"><label>Unit Price</label><input id="qf-unit" type="number" min="0" value="${q ? (q.unitPrice ?? q.amount) : 0}" oninput="calcQuotTotal()"></div>
@@ -2863,6 +2863,17 @@
         if (ce && cur) ce.value = cur;
       }
       function autoFillQuotFee() {}
+      function autoFillQuotProgram() {
+        const progName = document.getElementById('qf-prog')?.value;
+        if (!progName) return;
+        const prog = (DB.programs || []).find(p => p.name === progName);
+        if (!prog) return;
+        const unitEl = document.getElementById('qf-unit');
+        const curEl  = document.getElementById('qf-cur');
+        if (unitEl && prog.defaultFee) unitEl.value = prog.defaultFee;
+        if (curEl  && prog.feeCurrency) curEl.value = prog.feeCurrency;
+        calcQuotTotal();
+      }
       function saveQuotation(id) {
         const studentId = v("qf-sid");
         const studentName = document.getElementById("qf-sid-search") ? document.getElementById("qf-sid-search").value : "";
