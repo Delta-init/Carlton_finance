@@ -4329,18 +4329,15 @@
         const s = initialId ? getStudent(initialId) : null;
         const q = preQuotation || null;
         return `<div class="modal-title">Record payment</div>
-  <div class="form-row2 form-row2-wrap">
-    <div class="field" style="position:relative">
-      <label>Student</label>
-      <input id="f-sid-search" placeholder="Search student..." autocomplete="off"
-        value="${s ? s.name : ""}"
-        oninput="filterPayStudents()" onfocus="filterPayStudents()"
-        onblur="setTimeout(hidePayStudents,200)"
-        style="width:100%">
-      <input type="hidden" id="f-sid" value="${initialId || ""}">
-      <div id="pay-student-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg2);border:1px solid var(--border);border-radius:8px;z-index:300;max-height:200px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.25);margin-top:2px"></div>
-    </div>
-    <div class="field"><label>Program</label><select id="f-prog">${programOptions(s ? s.program : "")}</select></div>
+  <div class="field" style="position:relative">
+    <label>Student</label>
+    <input id="f-sid-search" placeholder="Search student..." autocomplete="off"
+      value="${s ? s.name : ""}"
+      oninput="filterPayStudents()" onfocus="filterPayStudents()"
+      onblur="setTimeout(hidePayStudents,200)"
+      style="width:100%">
+    <input type="hidden" id="f-sid" value="${initialId || ""}">
+    <div id="pay-student-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg2);border:1px solid var(--border);border-radius:8px;z-index:300;max-height:200px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.25);margin-top:2px"></div>
   </div>
   <div class="form-row2 form-row2-wrap">
     <div class="field"><label>Amount</label><input id="f-amt" type="number" value="${q ? q.amount : (s ? s.feeAmount : 0)}" oninput="updateHint('pay-hint','f-amt','f-cur');updatePaySummary()"></div>
