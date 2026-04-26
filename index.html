@@ -2720,7 +2720,7 @@
   ${qs.map(q => {
     const st = q.studentId ? getStudent(q.studentId) : null;
     const name = st ? st.name : (q.studentName || "—");
-    const paid = q.studentId ? (DB.payments || []).filter(p => p.studentId === q.studentId).reduce((sum, p) => sum + cvt(p.amount, p.currency, q.currency), 0) : 0;
+    const paid = (DB.payments || []).filter(p => p.quotationId ? p.quotationId === q.id : p.studentId === q.studentId).reduce((sum, p) => sum + cvt(p.amount, p.currency, q.currency), 0);
     const balance = q.amount - paid;
     return `<tr>
       <td class="mono" style="font-size:12px">${q.quotationNo}</td>
@@ -2855,13 +2855,16 @@
       DB.payments.length === 0
         ? `<div class="empty"><div class="empty-icon">💳</div><div class="empty-text">No payments recorded</div>${perm("canCreate") ? `<button class="btn btn-accent" onclick="openModal(modalAddPayment())">Record payment</button>` : ""}</div>`
         : `<div class="tbl-wrap"><table>
-      <tr><th>Student</th><th>Amount</th><th>${CUR}</th><th>Cur</th><th>Method</th><th>Account</th><th>Ref</th><th>Date</th><th>Proof</th><th>Invoice</th><th></th></tr>
+      <tr><th>Student</th><th>Quotation</th><th>Amount</th><th>${CUR}</th><th>Cur</th><th>Method</th><th>Account</th><th>Ref</th><th>Date</th><th>Proof</th><th>Invoice</th><th></th></tr>
       ${DB.payments
         .map((p) => {
           const st = getStudent(p.studentId),
             ac = getAccount(p.accountId);
+          const quot = p.quotationId ? (DB.quotations || []).find(q => q.id === p.quotationId) : null;
           return `<tr>
-        <td style="font-weight:500">${st.name || "?"}</td><td class="mono">${fmtOrig(p.amount, p.currency)}</td>
+        <td style="font-weight:500">${st.name || "?"}</td>
+        <td class="mono text3" style="font-size:11px">${quot ? `<span class="badge b-blue" style="font-size:10px">${quot.quotationNo}</span>` : `<span class="text3">—</span>`}</td>
+        <td class="mono">${fmtOrig(p.amount, p.currency)}</td>
         <td class="mono">${fmt(toUSD(p.amount, p.currency))}</td><td>${curBadge(p.currency)}</td>
         <td>${methodDot(p.method)}${p.method}</td><td class="text2">${ac.name || "?"}</td>
         <td class="mono text3">${p.ref || "—"}</td><td class="mono text3">${dateStr(p.date)}</td>
@@ -4427,9 +4430,11 @@
         ac.balance =
           Math.round((ac.balance + cvt(amt, currency, ac.currency)) * 100) /
           100;
+        const quotationId = window._convertingQuotationId || null;
         DB.payments.push({
           id: uid(),
           studentId,
+          quotationId,
           amount: amt,
           currency,
           method,
@@ -4439,8 +4444,8 @@
           proof,
           invoice: false,
         });
-        if (window._convertingQuotationId) {
-          const cq = (DB.quotations || []).find(x => x.id === window._convertingQuotationId);
+        if (quotationId) {
+          const cq = (DB.quotations || []).find(x => x.id === quotationId);
           if (cq) { cq.status = "converted"; cq.paymentId = DB.payments[DB.payments.length - 1].id; }
           window._convertingQuotationId = null;
         }
