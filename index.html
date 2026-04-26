@@ -3160,8 +3160,16 @@
         <td class="mono">${fmtOrig(c.baseAmount,c.currency)}</td>
         <td class="mono">${c.rate}%</td>
         <td class="mono" style="color:var(--accent);font-weight:600">${fmtOrig(c.commissionAmount,c.currency)}</td>
-        <td>${c.paid?`<span class="badge b-green">Paid · ${dateStr(c.paidDate)}</span>`:`<span class="badge b-amber">Unpaid</span>`}</td>
-        <td>${canEdit&&!c.paid?`<button class="btn btn-sm" onclick="markCommissionPaid('${c.id}')">✓ Mark Paid</button>`:''}</td>
+        <td>${(()=>{
+          const paid=c.paidAmount||0;
+          if(c.paid) return `<span class="badge b-green">Paid · ${dateStr(c.paidDate)}</span>`;
+          if(paid>0){
+            const rem=Math.round((c.commissionAmount-paid)*100)/100;
+            return `<span class="badge b-blue">Partial · ${fmtOrig(paid,c.currency)} paid</span><br><span style="font-size:11px;color:var(--text3)">Rem: ${fmtOrig(rem,c.currency)}</span>`;
+          }
+          return `<span class="badge b-amber">Unpaid</span>`;
+        })()}</td>
+        <td>${canEdit&&!c.paid?`<button class="btn btn-sm" onclick="markCommissionPaid('${c.id}')">✓ ${(c.paidAmount||0)>0?'Pay More':'Mark Paid'}</button>`:''}</td>
       </tr>`;
     }).join('')}
   </table></div>`}
@@ -3170,9 +3178,85 @@
       function markCommissionPaid(id) {
         const c = (DB.commissions||[]).find(x=>x.id===id);
         if (!c) return;
-        c.paid = true; c.paidDate = today();
-        saveDB(); renderCurrentPage();
-        toast('Commission marked as paid');
+        const sp = getSalesperson(c.salespersonId);
+        const quot = (DB.quotations||[]).find(q=>q.id===c.quotationId);
+        const paidSoFar = c.paidAmount || 0;
+        const remaining = Math.round((c.commissionAmount - paidSoFar) * 100) / 100;
+        openModal(`<div class="modal-title">Pay Commission</div>
+<div style="background:var(--bg3);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px">
+  <div class="fl-sb"><span style="color:var(--text2)">Salesperson</span><span style="font-weight:600">${sp.name}</span></div>
+  <div class="fl-sb" style="margin-top:4px"><span style="color:var(--text2)">Quotation</span><span class="mono">${quot?quot.quotationNo:'—'}</span></div>
+  <div class="fl-sb" style="margin-top:4px"><span style="color:var(--text2)">Total commission</span><span class="mono">${fmtOrig(c.commissionAmount,c.currency)}</span></div>
+  <div class="fl-sb" style="margin-top:4px"><span style="color:var(--text2)">Already paid</span><span class="mono green">${fmtOrig(paidSoFar,c.currency)}</span></div>
+  <div class="fl-sb" style="margin-top:4px;font-weight:700"><span>Remaining</span><span class="mono" style="color:var(--red)">${fmtOrig(remaining,c.currency)}</span></div>
+</div>
+<div class="form-row2 form-row2-wrap">
+  <div class="field"><label>Pay amount (split allowed)</label>
+    <input id="cp-amt" type="number" min="0.01" max="${remaining}" step="0.01" value="${remaining}" style="width:100%">
+  </div>
+  <div class="field"><label>Currency</label>
+    <input id="cp-cur" value="${c.currency}" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text)" readonly>
+  </div>
+</div>
+<div class="field"><label>Pay from account</label>
+  <select id="cp-acct" style="width:100%">${acctOptions()}</select>
+</div>
+<div class="field"><label>Date</label>
+  <input id="cp-date" type="date" value="${today()}" style="width:100%">
+</div>
+<div class="field"><label>Note <span style="color:var(--text3);font-weight:400">(optional)</span></label>
+  <input id="cp-note" placeholder="e.g. Bank transfer, Cash..." style="width:100%">
+</div>
+<div class="modal-actions">
+  <button class="btn" onclick="closeModal()">Cancel</button>
+  <button class="btn btn-accent" onclick="confirmCommissionPay('${id}')">✓ Pay &amp; Add Expense</button>
+</div>`);
+      }
+      function confirmCommissionPay(id) {
+        const c = (DB.commissions||[]).find(x=>x.id===id);
+        if (!c) return;
+        const amt      = parseFloat(document.getElementById('cp-amt')?.value) || 0;
+        const accountId= document.getElementById('cp-acct')?.value;
+        const date     = document.getElementById('cp-date')?.value || today();
+        const note     = document.getElementById('cp-note')?.value?.trim() || '';
+        const paidSoFar= c.paidAmount || 0;
+        const remaining= Math.round((c.commissionAmount - paidSoFar) * 100) / 100;
+        if (!amt || amt <= 0) { toast('Enter a valid amount','amber'); return; }
+        if (amt > remaining + 0.001) { toast(`Max payable is ${fmtOrig(remaining, c.currency)}`, 'amber'); return; }
+        if (!accountId) { toast('Select an account','amber'); return; }
+        const sp   = getSalesperson(c.salespersonId);
+        const quot = (DB.quotations||[]).find(q=>q.id===c.quotationId);
+        // Ensure Commission category exists
+        if (!DB.expenseCategories) DB.expenseCategories = [];
+        if (!DB.expenseCategories.find(ec=>ec.name==='Commission')) {
+          DB.expenseCategories.push({ id: uid(), name: 'Commission', subcategories: ['Salesperson','Manager','Bonus'] });
+        }
+        // Deduct from account balance
+        const ac = getAccount(accountId);
+        if (ac) ac.balance = Math.round((ac.balance - cvt(amt, c.currency, ac.currency)) * 100) / 100;
+        // Create expense automatically
+        const expId = uid();
+        DB.expenses.push({
+          id: expId,
+          description: `Commission – ${sp.name}${quot?' ('+quot.quotationNo+')':''}${note?' – '+note:''}`,
+          category: 'Commission',
+          subcategory: `L${c.level} – ${sp.name}`,
+          amount: amt,
+          currency: c.currency,
+          accountId,
+          date,
+          status: 'approved',
+          note: `Commission payment${c.level>1?' (multi-level L'+c.level+')':''}`,
+          proof: null,
+        });
+        // Update commission paidAmount
+        c.paidAmount = Math.round((paidSoFar + amt) * 100) / 100;
+        if (c.paidAmount >= c.commissionAmount - 0.001) {
+          c.paid = true; c.paidDate = date;
+        }
+        logActivity('commission', `Paid ${fmtOrig(amt,c.currency)} commission to ${sp.name}`);
+        saveDB(); closeModal(); renderCurrentPage();
+        toast(`✅ ${fmtOrig(amt,c.currency)} paid — expense added automatically`);
       }
       function exportCommissionCSV() {
         const fl = _cf;
