@@ -2736,6 +2736,7 @@
         ${canEdit && q.status === "draft" ? `<button class="btn btn-sm" onclick="setQuotationStatus('${q.id}','sent')">Mark Sent</button>` : ""}
         ${canEdit && q.status === "sent" ? `<button class="btn btn-sm" onclick="setQuotationStatus('${q.id}','accepted')">Accept</button>` : ""}
         ${canCreate && (q.status === "accepted" || q.status === "sent") ? `<button class="btn btn-sm btn-accent" onclick="convertQuotation('${q.id}')">Convert to Payment</button>` : ""}
+        ${canCreate && q.status === "converted" && balance > 0 && q.studentId ? `<button class="btn btn-sm btn-accent" onclick="convertQuotation('${q.id}')">+ Record Payment</button>` : ""}
         ${canEdit && q.status !== "converted" && q.status !== "cancelled" ? `<button class="btn btn-sm" onclick="openModal(modalAddQuotation('${q.id}'))">Edit</button>` : ""}
         ${canEdit && q.status !== "converted" && q.status !== "cancelled" ? `<button class="btn btn-sm" style="color:var(--red)" onclick="setQuotationStatus('${q.id}','cancelled')">Cancel</button>` : ""}
       </td>
