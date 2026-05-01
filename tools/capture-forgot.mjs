@@ -16,4 +16,4 @@ console.log('forgot clicked:', clicked);
 await new Promise(r => setTimeout(r, 600));
 await page.screenshot({ path: 'screenshots/13-forgot-password.png' });
 await browser.close();
-console.log('done');
+console.log('done')

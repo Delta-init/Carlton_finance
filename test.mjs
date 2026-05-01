@@ -29,7 +29,7 @@ async function testHealth() {
   console.log('\n📋 HEALTH CHECKS');
 
   let r = await req('GET', '/');
-  log('health', 'GET / returns service info', r.status === 200 && r.json?.service?.includes('Carlton'), `status=${r.status}`);
+  log('health', 'GET / returns service info', r.status === 200 && r.json?.service?.includes('Delta'), `status=${r.status}`);
 
   r = await req('GET', '/health');
   log('health', 'GET /health returns ok', r.status === 200 && r.json?.status === 'ok', `status=${r.status}`);
@@ -38,7 +38,7 @@ async function testHealth() {
   log('health', 'Unknown route returns 404', r.status === 404, `status=${r.status}`);
 
   r = await req('GET', '/health');
-  log('health', 'GET /health has timestamp', typeof r.json?.time === 'string', `time=${r.json?.time}`);
+  log('health', 'GET /health reports db=connected', r.json?.db === 'connected', `db=${r.json?.db}`);
 }
 
 // ── 2. DATABASE — GET /db ────────────────────────────────────
@@ -487,11 +487,19 @@ async function run() {
   console.log(`  Target: ${BASE}`);
   console.log('━'.repeat(52));
 
-  // Quick connectivity check
-  try {
-    await fetch(`${BASE}/health`);
-  } catch {
-    console.error('\n❌  Server not reachable at ' + BASE + '. Is it running?\n');
+  // Quick connectivity check — retry for up to 8s to allow MongoDB to connect
+  let ready = false;
+  for (let i = 0; i < 8; i++) {
+    try {
+      const r = await fetch(`${BASE}/health`);
+      const j = await r.json();
+      if (j.db === 'connected') { ready = true; break; }
+    } catch {}
+    await new Promise(r => setTimeout(r, 1000));
+    process.stdout.write('  waiting for DB...\n');
+  }
+  if (!ready) {
+    console.error('\n❌  Server or MongoDB not ready at ' + BASE + '\n');
     process.exit(1);
   }
 

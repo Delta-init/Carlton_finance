@@ -8,3 +8,4 @@ index.html.bak
 .claude/
 screenshots/
 .DS_Store
+.env
